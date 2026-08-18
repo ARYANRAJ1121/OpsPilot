@@ -1,214 +1,148 @@
 <div align="center">
 
-# 🚨 OpsPilot
+# OpsPilot
 
-### Multi-Agent Agentic AI Incident-Response System
+**Agentic AI incident response — from raw alert to executed remediation, safely.**
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![LangGraph](https://img.shields.io/badge/built%20with-LangGraph-blueviolet)](https://github.com/langchain-ai/langgraph)
-[![Pydantic v2](https://img.shields.io/badge/schema-Pydantic%20v2-e92063)](https://docs.pydantic.dev/)
-[![Tests](https://img.shields.io/badge/tests-11%20passing-brightgreen)](./tests/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
-
-*From raw alert to executed remediation — autonomously, safely, with a human in the loop exactly where it matters.*
+[![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-6B46C1?style=flat)](https://github.com/langchain-ai/langgraph)
+[![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?style=flat)](https://docs.pydantic.dev)
+[![Tests](https://img.shields.io/badge/tests-11%20passed-22C55E?style=flat)](./tests/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-FFA500?style=flat)](https://github.com/astral-sh/ruff)
 
 </div>
 
 ---
 
-## What Is OpsPilot?
+OpsPilot is a **multi-agent incident-response system** built on LangGraph. It ingests alerts from Slack, support tickets, logs, and GitHub Issues — investigates them in parallel across specialised agents — then routes remediation actions through two deterministic safety gates before anything is executed.
 
-OpsPilot is a production-oriented **multi-agent incident-response system** built on LangGraph. It ingests signals from Slack, support tickets, log pipelines, and GitHub Issues, investigates them in parallel using specialised agents, then either auto-executes safe remediations or routes high-risk actions to a human reviewer — all with full trace observability.
-
-**The hard engineering constraint that makes it trustworthy:** no LLM agent can approve or execute a tool action. That decision belongs exclusively to two deterministic, pure-Python gates that sit between the planner and the executor.
+No LLM decides what gets executed. That decision belongs to pure-Python logic that can be audited, unit-tested, and trusted.
 
 ---
 
-## Core Design Principles
+## How It Works
 
-| Principle | Implementation |
-|---|---|
-| **Provenance before action** | Every proposed action must cite tool-output evidence IDs. Proposals citing raw event text are rejected at the Provenance Gate — not at review time. |
-| **Policy owns permissions** | The deterministic Policy Engine classifies every tool into a risk tier and enforces approval rules. No LLM can bypass or override this. |
-| **Parallel, non-blocking comms** | The Customer Communication Agent forks at the Router and fires stakeholder updates while investigation is still running — it never waits on evidence collection. |
-| **Full trace observability** | Every agent boundary emits a structured `TraceEntry`. The full decision chain is reconstructable and fed into an offline LLM evaluation pipeline. |
-| **Minimal surface area** | No speculative abstraction. Every file and every function earns its place. |
+```mermaid
+graph TD
+    A["🔔 Alert Sources\nSlack · Tickets · Logs · GitHub"] --> B["Ingestion Agent"]
+    B --> C["Router & Severity Agent"]
 
----
+    C --> D["Investigation Agent"]
+    C --> E["Knowledge Retrieval Agent"]
+    C --> F["Customer Comm Agent"]
 
-## Architecture
+    F -->|independent branch| Z["🗄️ Trace Store"]
 
-```
-┌─────────────────────────────────────────────────────────┐
-│         Slack · Support Tickets · Logs · GitHub Issues  │
-└────────────────────────┬────────────────────────────────┘
-                         │
-                 ┌───────▼────────┐
-                 │ Ingestion Agent │   normalise & deduplicate
-                 └───────┬────────┘
-                         │
-              ┌──────────▼───────────┐
-              │ Router & Severity    │   classify · route · triage
-              └──┬──────────┬────┬──┘
-                 │          │    │
-        ┌────────▼──┐  ┌────▼──┐ └──────────────────────┐
-        │Investig-  │  │Know-  │              ┌──────────▼──────────┐
-        │ation      │  │ledge  │              │Customer Comm Agent  │
-        │Agent      │  │Retrie-│              │                     │
-        └────┬──────┘  │val    │              │ Sends stakeholder   │
-             │         │Agent  │              │ updates using only  │
-             │         └───┬───┘              │ severity/triage     │
-             └──────┬──────┘                  │ data, in parallel   │
-                    │                         └──────────┬──────────┘
-        ┌───────────▼────────────┐                       │
-        │ Evidence & Diagnosis   │                 Trace Store ◄──┘
-        │ Agent                  │           ("Communication logged")
-        └───────────┬────────────┘
-                    │
-           ┌────────▼─────────┐
-           │ Action Planner   │   proposes actions w/ tool_output_id citations
-           └────────┬─────────┘
-                    │
-        ╔═══════════▼══════════╗
-        ║  PROVENANCE GATE     ║  ◄── Pure Python · Zero LLM
-        ║                      ║
-        ║  ✓ evidence_refs     ║
-        ║    must resolve to   ║
-        ║    real ToolOutputs  ║
-        ║  ✗ raw event.content ║
-        ║    rejected outright ║
-        ╚═══════════╤══════════╝
-                    │
-        ╔═══════════▼══════════╗
-        ║  POLICY ENGINE       ║  ◄── Pure Python · Zero LLM
-        ║                      ║
-        ║  Tier 1 read-only    ║──► auto-approve
-        ║  Tier 2 rev.-write   ║──► auto / light review
-        ║  Tier 3 high-risk    ║──► mandatory human
-        ╚═══════════╤══════════╝
-                    │
-           ┌────────▼──────────┐
-           │ Confidence &      │   routing only after BOTH gates pass
-           │ Risk Router       │
-           └──────┬───────┬────┘
-                  │       │
-        ┌─────────▼─┐   ┌─▼──────────────────┐
-        │ Execution │   │ Human Approval Loop │
-        │ Agent     │   │                     │
-        └─────┬─────┘   └──┬──────────────┬──┘
-              │       Approved          Rejected
-              │            │                │
-    ┌─────────▼────┐  ┌────▼───────┐  ┌───▼──────────┐
-    │Slack · Jira  │  │ Execution  │  │ Revise /     │
-    │Incident Tool │  │ Agent      │  │ Escalate     │
-    └─────────┬────┘  └─────┬──────┘  └───────┬──────┘
-              │             │                  │
-              └──────┬──────┘           Human Escalation
-                     │
-               ┌─────▼──────┐
-               │ Trace Store │
-               └─────┬──────┘
-                     │
-           ┌─────────▼──────────┐
-           │ LLM Eval Pipeline  │   offline quality & safety scoring
-           └────────────────────┘
+    D --> G["Evidence & Diagnosis Agent"]
+    E --> G
+
+    G --> H["Action Planner Agent"]
+
+    H --> I["🔒 Provenance Gate\n─────────────────\nPure Python · No LLM\nRejects raw-event citations"]
+    I --> J["🔒 Policy Engine\n─────────────────\nPure Python · No LLM\nTier 1 / 2 / 3 enforcement"]
+
+    J --> K{{"Confidence &\nRisk Router"}}
+
+    K -->|Safe + high confidence| L["Execution Agent"]
+    K -->|Risky / uncertain| M["👤 Human Approval"]
+
+    M -->|Approved| L
+    M -->|Rejected| N["Revise / Escalate"]
+
+    L --> O["Slack · Jira · Incident Tool"]
+    O --> Z
+    N --> Z
+
+    Z --> P["📊 LLM Eval Pipeline"]
+
+    style I fill:#1e293b,stroke:#94a3b8,color:#f1f5f9
+    style J fill:#1e293b,stroke:#94a3b8,color:#f1f5f9
+    style K fill:#78350f,stroke:#f59e0b,color:#fef3c7
+    style L fill:#14532d,stroke:#22c55e,color:#dcfce7
+    style M fill:#7c2d12,stroke:#f97316,color:#ffedd5
+    style N fill:#450a0a,stroke:#ef4444,color:#fee2e2
+    style Z fill:#2e1065,stroke:#a855f7,color:#f3e8ff
+    style P fill:#2e1065,stroke:#a855f7,color:#f3e8ff
+    style F fill:#164e63,stroke:#06b6d4,color:#cffafe
 ```
 
 ---
 
-## Policy Engine — Permission Tiers
+## The Safety Gates
 
-| Tier | Classification | Examples | Approval |
-|------|---------------|----------|----------|
-| **1** | `read_only` | Fetch logs, read metrics, describe resources | ✅ Auto-approved |
-| **2** | `reversible_write` | Restart service, toggle feature flag, flush cache | ✅ Auto / light review |
-| **3** | `high_risk_write` | DB migration, infra teardown, secret rotation | 🔒 Mandatory human approval |
+OpsPilot enforces two deterministic gates between planning and execution — both are pure Python with zero model calls.
+
+### Provenance Gate
+Every `ActionProposal` must cite evidence by `tool_output_id`. If a reference cannot be resolved to a real `ToolOutput` collected during investigation, the proposal is **rejected before the Policy Engine sees it**. Raw event content is never valid evidence.
+
+### Policy Engine — Tier Classification
+
+| Tier | Type | Examples | Decision |
+|:----:|------|----------|----------|
+| **1** | `read_only` | Fetch logs, read metrics, describe config | Auto-approved |
+| **2** | `reversible_write` | Restart service, toggle flag, flush cache | Auto / light review |
+| **3** | `high_risk_write` | DB migration, infra teardown, secret rotation | Mandatory human approval |
+
+The routing decision (auto-execute vs. human-in-the-loop) is made **strictly after both gates pass** — never before.
 
 ---
 
-## Project Structure
+## Project Layout
 
 ```
-OpsPilot/
-├── opspilot/
-│   ├── schemas.py                  # Canonical Pydantic v2 models — every data boundary
-│   ├── provenance_gate.py          # Deterministic Provenance Gate (pure Python)
-│   ├── policy_engine.py            # Deterministic Policy Engine  (pure Python)  [M3]
-│   ├── tools/
-│   │   └── simulated.py            # Simulated tool registry                      [M4]
-│   ├── agents/
-│   │   ├── ingestion.py            # Ingestion Agent                              [M5+]
-│   │   ├── router.py               # Router & Severity Agent
-│   │   ├── investigation.py        # Investigation Agent
-│   │   ├── knowledge_retrieval.py  # Knowledge Retrieval Agent
-│   │   ├── customer_communication.py
-│   │   ├── evidence_diagnosis.py   # Evidence & Diagnosis Agent
-│   │   ├── action_planner.py       # Action Planner Agent
-│   │   └── execution.py            # Execution Agent
-│   └── graph.py                    # LangGraph graph definition                   [M5]
-└── tests/
-    ├── test_provenance_gate.py      # 11 tests — all passing
-    └── test_policy_engine.py                                                      [M3]
+opspilot/
+├── schemas.py                  # All Pydantic v2 contracts — every data boundary
+├── provenance_gate.py          # Deterministic Provenance Gate
+├── policy_engine.py            # Deterministic Policy Engine            ← next
+├── tools/
+│   └── simulated.py            # Simulated tool registry
+├── agents/
+│   ├── ingestion.py
+│   ├── router.py
+│   ├── investigation.py
+│   ├── knowledge_retrieval.py
+│   ├── customer_communication.py
+│   ├── evidence_diagnosis.py
+│   ├── action_planner.py
+│   └── execution.py
+└── graph.py                    # LangGraph graph definition
+
+tests/
+├── test_provenance_gate.py     # 11/11 passing
+└── test_policy_engine.py       ← next
 ```
 
 ---
 
-## Build Progress
+## Build Status
 
-| # | Module | File(s) | Status |
-|---|--------|---------|--------|
-| 1 | Schemas | `opspilot/schemas.py` | ✅ Complete |
-| 2 | Provenance Gate | `opspilot/provenance_gate.py` + tests | ✅ Complete · 11/11 passing |
-| 3 | Policy Engine | `opspilot/policy_engine.py` + tests | 🔲 In progress |
-| 4 | Simulated Tools | `opspilot/tools/simulated.py` | 🔲 Pending |
-| 5 | LangGraph Skeleton | `opspilot/graph.py` | 🔲 Pending |
-| 6 | Agents | `opspilot/agents/` | 🔲 Pending |
-| 7 | Eval Harness | `opspilot/eval/` | 🔲 Pending |
+| Module | Status |
+|--------|--------|
+| Schemas | ✅ Complete |
+| Provenance Gate | ✅ Complete · 11/11 tests passing |
+| Policy Engine | 🔧 In progress |
+| Simulated Tools | ⬜ Pending |
+| LangGraph Skeleton | ⬜ Pending |
+| Agents (7) | ⬜ Pending |
+| Eval Harness | ⬜ Pending |
 
 ---
 
-## Quick Start
+## Quickstart
 
 ```bash
-# 1. Clone
 git clone https://github.com/ARYANRAJ1121/OpsPilot.git
 cd OpsPilot
 
-# 2. Install (Python 3.11+)
 pip install -e ".[dev]"
 
-# 3. Configure
-cp .env.example .env          # add your LLM API keys
+cp .env.example .env   # add your LLM API key
 
-# 4. Run tests
 py -3.11 -m pytest tests/ -v
 ```
 
 ---
 
-## Tech Stack
+## Stack
 
-| Layer | Technology |
-|---|---|
-| Agent orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) |
-| LLM integration | [LangChain](https://github.com/langchain-ai/langchain) |
-| Data contracts | [Pydantic v2](https://docs.pydantic.dev/) |
-| Structured logging | [structlog](https://www.structlog.org/) |
-| Testing | [pytest](https://pytest.org/) + pytest-asyncio |
-| Linting / formatting | [ruff](https://github.com/astral-sh/ruff) |
-| Type checking | [mypy](https://mypy-lang.org/) (strict mode) |
-
----
-
-## Contributing
-
-This project is being built incrementally — one confirmed module at a time. See the build progress table above for what's next. Each module ships with:
-- Full type hints and Pydantic I/O contracts
-- Structured logging at every agent boundary
-- Unit tests before the module is marked complete
-
----
-
-<div align="center">
-Built with LangGraph · Pydantic v2 · Python 3.11
-</div>
+[LangGraph](https://github.com/langchain-ai/langgraph) · [LangChain](https://github.com/langchain-ai/langchain) · [Pydantic v2](https://docs.pydantic.dev) · [structlog](https://www.structlog.org) · [ruff](https://github.com/astral-sh/ruff) · [mypy strict](https://mypy-lang.org) · Python 3.11+
