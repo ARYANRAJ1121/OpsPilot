@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-6B46C1?style=flat)](https://github.com/langchain-ai/langgraph)
 [![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?style=flat)](https://docs.pydantic.dev)
-[![Tests](https://img.shields.io/badge/tests-11%20passed-22C55E?style=flat)](./tests/)
+[![Tests](https://img.shields.io/badge/tests-passing-22C55E?style=flat)](./tests/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-FFA500?style=flat)](https://github.com/astral-sh/ruff)
 
 </div>
@@ -93,23 +93,27 @@ The routing decision (auto-execute vs. human-in-the-loop) is made **strictly aft
 opspilot/
 ├── schemas.py                  # All Pydantic v2 contracts — every data boundary
 ├── provenance_gate.py          # Deterministic Provenance Gate
-├── policy_engine.py            # Deterministic Policy Engine            ← next
+├── policy_engine.py            # Deterministic Policy Engine
+├── confidence_router.py        # Deterministic Confidence & Risk Router
+├── graph.py                    # LangGraph graph definition
 ├── tools/
 │   └── simulated.py            # Simulated tool registry
-├── agents/
-│   ├── ingestion.py
-│   ├── router.py
-│   ├── investigation.py
-│   ├── knowledge_retrieval.py
-│   ├── customer_communication.py
-│   ├── evidence_diagnosis.py
-│   ├── action_planner.py
-│   └── execution.py
-└── graph.py                    # LangGraph graph definition
+└── agents/
+    ├── ingestion.py
+    ├── router.py
+    ├── investigation.py
+    ├── knowledge_retrieval.py
+    ├── customer_communication.py
+    ├── evidence_diagnosis.py
+    ├── action_planner.py
+    └── execution.py
 
 tests/
-├── test_provenance_gate.py     # 11/11 passing
-└── test_policy_engine.py       ← next
+├── test_provenance_gate.py
+├── test_policy_engine.py
+├── test_confidence_router.py
+├── test_agents.py
+└── test_graph.py
 ```
 
 ---
@@ -119,12 +123,15 @@ tests/
 | Module | Status |
 |--------|--------|
 | Schemas | ✅ Complete |
-| Provenance Gate | ✅ Complete · 11/11 tests passing |
-| Policy Engine | 🔧 In progress |
-| Simulated Tools | ⬜ Pending |
-| LangGraph Skeleton | ⬜ Pending |
-| Agents (7) | ⬜ Pending |
+| Provenance Gate | ✅ Complete |
+| Policy Engine | ✅ Complete |
+| Simulated Tools | ✅ Complete |
+| Agents (8) | ✅ Heuristic / offline |
+| Confidence Router | ✅ Complete |
+| LangGraph Skeleton | ✅ Complete |
+| Human approval loop | 🔧 Request object only — no reviewer UI |
 | Eval Harness | ⬜ Pending |
+| Real Slack / Jira / GitHub adapters | ⬜ Pending |
 
 ---
 
