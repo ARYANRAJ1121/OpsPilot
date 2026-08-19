@@ -1,12 +1,25 @@
-"""Evidence & Diagnosis Agent — cite only ToolOutputs. No LLM."""
+"""
+Evidence & Diagnosis Agent.
+
+Evidence and confidence are computed deterministically from ToolOutputs.
+The LLM (when configured) only rewrites the diagnosis *prose* for clarity —
+it cannot change the evidence set or the confidence score.
+"""
 
 from __future__ import annotations
 
+from opspilot.llm import enrich
 from opspilot.schemas import (
     Evidence,
     EvidenceAndDiagnosisOutput,
     InvestigationOutput,
     KnowledgeRetrievalOutput,
+)
+
+_DIAGNOSIS_SYSTEM = (
+    "You are an SRE incident diagnostician. Given raw findings, write a crisp "
+    "2-3 sentence root-cause diagnosis. Do not invent facts beyond the findings. "
+    "Do not recommend specific remediation tools."
 )
 
 
@@ -24,11 +37,16 @@ def run_evidence_diagnosis(
         crash = sum(1 for p in pods["pods"] if p["status"] == "CrashLoopBackOff")
 
     error_rate = float(metrics["error_rate_pct"]) if metrics else 0.0
-    diagnosis = (
+    heuristic_diagnosis = (
         f"{investigation.findings_summary}. "
         f"{knowledge.articles_summary}. "
         f"Primary cause hypothesis: pod crashloop driving elevated error rate "
         f"({error_rate}%, crashloop={crash})."
+    )
+    diagnosis = enrich(
+        _DIAGNOSIS_SYSTEM,
+        f"Findings:\n{heuristic_diagnosis}",
+        fallback=heuristic_diagnosis,
     )
 
     confidence = 0.35

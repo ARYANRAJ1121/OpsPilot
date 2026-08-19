@@ -14,6 +14,7 @@ from uuid import UUID
 
 import structlog
 
+from opspilot.config import get_settings
 from opspilot.schemas import (
     ConfidenceRiskRouterOutput,
     PolicyEngineResult,
@@ -23,6 +24,8 @@ from opspilot.schemas import (
 
 log = structlog.get_logger(__name__)
 
+# Kept as a module constant for backwards compatibility; the live value is
+# read from settings so it can be tuned via OPSPILOT_CONFIDENCE_THRESHOLD.
 CONFIDENCE_AUTO_EXECUTE_THRESHOLD = 0.7
 
 
@@ -59,10 +62,11 @@ def _decide(
     provenance_result: ProvenanceCheckResult,
     policy_result: PolicyEngineResult,
 ) -> RoutingDecision:
+    threshold = get_settings().confidence_auto_execute_threshold
     if not provenance_result.passed:
         return RoutingDecision.ESCALATE
     if policy_result.any_requires_human:
         return RoutingDecision.REQUIRE_HUMAN_APPROVAL
-    if confidence_score < CONFIDENCE_AUTO_EXECUTE_THRESHOLD:
+    if confidence_score < threshold:
         return RoutingDecision.REQUIRE_HUMAN_APPROVAL
     return RoutingDecision.AUTO_EXECUTE

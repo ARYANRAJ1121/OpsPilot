@@ -3,9 +3,14 @@ opspilot/graph.py
 
 LangGraph wiring for the OpsPilot pipeline.
 
-Agents produce typed schema objects. Provenance Gate, Policy Engine,
-and Confidence Router remain pure Python with zero LLM calls.
-Customer communication forks from the router and never re-joins.
+Agents produce typed schema objects. The Provenance Gate, Policy Engine,
+and Confidence Router remain pure Python with zero LLM calls. Customer
+communication forks from the router and never re-joins.
+
+Human-in-the-loop: when the Confidence Router requires human approval, the
+`human_approval` node calls LangGraph's `interrupt()`, pausing the run. The
+caller resumes with a HumanApprovalResponse via `resume_incident`, and the
+graph then routes to execution (approved) or escalation (rejected).
 """
 
 from __future__ import annotations
@@ -13,9 +18,11 @@ from __future__ import annotations
 import time
 from operator import add
 from typing import Annotated, Any, TypedDict
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command, interrupt
 
 from opspilot.agents.action_planner import run_action_planner
 from opspilot.agents.customer_communication import run_customer_communication
@@ -35,7 +42,9 @@ from opspilot.schemas import (
     EscalationRecord,
     EvidenceAndDiagnosisOutput,
     ExecutionResult,
+    HumanApprovalDecision,
     HumanApprovalRequest,
+    HumanApprovalResponse,
     IncidentEvent,
     IngestionOutput,
     InvestigationOutput,
@@ -46,6 +55,7 @@ from opspilot.schemas import (
     RoutingDecision,
     TraceEntry,
 )
+from opspilot.trace_store import write_traces
 
 
 class GraphState(TypedDict, total=False):
@@ -62,6 +72,7 @@ class GraphState(TypedDict, total=False):
     routing: ConfidenceRiskRouterOutput
     execution: ExecutionResult
     human_approval_request: HumanApprovalRequest
+    human_approval_response: HumanApprovalResponse
     escalation: EscalationRecord
     traces: Annotated[list[TraceEntry], add]
 
@@ -282,6 +293,7 @@ def _execution_node(state: GraphState) -> dict[str, Any]:
 
 
 def _human_approval_node(state: GraphState) -> dict[str, Any]:
+    """Pause the graph and wait for a human decision via interrupt()."""
     t0 = time.monotonic()
     event_id = state["event"].event_id
     request = HumanApprovalRequest(
@@ -290,26 +302,71 @@ def _human_approval_node(state: GraphState) -> dict[str, Any]:
         policy_result=state["policy"],
         context_summary=state["diagnosis"].diagnosis,
     )
+
+    # Execution halts here until resume_incident() supplies a payload.
+    payload = interrupt(
+        {
+            "kind": "human_approval",
+            "request": request.model_dump(mode="json"),
+            "proposals": [p.model_dump(mode="json") for p in request.proposals],
+            "context_summary": request.context_summary,
+        }
+    )
+
+    response = _coerce_response(payload, request_id=request.request_id, event_id=event_id)
     return {
         "human_approval_request": request,
+        "human_approval_response": response,
         "traces": _trace(
             event_id,
             "human_approval",
-            {"decision": state["routing"].routing_decision.value},
-            request.model_dump(mode="json"),
+            {"proposals": [p.tool_name for p in request.proposals]},
+            response.model_dump(mode="json"),
             t0,
         ),
     }
 
 
+def _coerce_response(
+    payload: Any,
+    *,
+    request_id: UUID,
+    event_id: UUID,
+) -> HumanApprovalResponse:
+    if isinstance(payload, HumanApprovalResponse):
+        return payload
+    if isinstance(payload, dict):
+        data = {"request_id": request_id, **payload}
+        return HumanApprovalResponse(**data)
+    # Any unexpected payload is treated as a rejection (fail-safe).
+    return HumanApprovalResponse(
+        request_id=request_id,
+        decision=HumanApprovalDecision.REJECTED,
+        reviewer_id="unknown",
+        notes="Unrecognised approval payload — defaulting to rejection.",
+    )
+
+
+def _route_after_human(state: GraphState) -> str:
+    response = state.get("human_approval_response")
+    if response and response.decision is HumanApprovalDecision.APPROVED:
+        return "execution"
+    return "escalate"
+
+
 def _escalate_node(state: GraphState) -> dict[str, Any]:
     t0 = time.monotonic()
     event_id = state["event"].event_id
-    reason = "provenance_gate_failed"
-    if state["routing"].routing_decision is RoutingDecision.ESCALATE:
-        if state["provenance"].passed:
-            reason = "confidence_or_policy_escalation"
-    record = EscalationRecord(event_id=event_id, reason=reason)
+    response = state.get("human_approval_response")
+
+    if response and response.decision is HumanApprovalDecision.REJECTED:
+        reason = "human_rejected"
+    elif not state["provenance"].passed:
+        reason = "provenance_gate_failed"
+    else:
+        reason = "confidence_or_policy_escalation"
+
+    record = EscalationRecord(event_id=event_id, reason=reason, human_response=response)
     return {
         "escalation": record,
         "traces": _trace(
@@ -322,7 +379,7 @@ def _escalate_node(state: GraphState) -> dict[str, Any]:
     }
 
 
-def build_graph():
+def build_graph(*, checkpointer: Any | None = None):
     graph = StateGraph(GraphState)
     graph.add_node("ingestion", _ingestion_node)
     graph.add_node("router", _router_node)
@@ -359,13 +416,83 @@ def build_graph():
             "escalate": "escalate",
         },
     )
+    graph.add_conditional_edges(
+        "human_approval",
+        _route_after_human,
+        {
+            "execution": "execution",
+            "escalate": "escalate",
+        },
+    )
     graph.add_edge("execution", END)
-    graph.add_edge("human_approval", END)
     graph.add_edge("escalate", END)
-    return graph.compile()
+
+    return graph.compile(checkpointer=checkpointer or MemorySaver())
 
 
-def run_incident(event: IncidentEvent) -> GraphState:
-    """Run a single incident through the compiled graph."""
-    app = build_graph()
-    return app.invoke({"event": event, "traces": []})
+# A single compiled app is reused so its in-memory checkpointer persists
+# state across the invoke/resume boundary within one process.
+_APP = None
+
+
+def _app():
+    global _APP
+    if _APP is None:
+        _APP = build_graph()
+    return _APP
+
+
+def _thread_config(thread_id: str) -> dict[str, Any]:
+    return {"configurable": {"thread_id": thread_id}}
+
+
+def run_incident(
+    event: IncidentEvent,
+    *,
+    thread_id: str | None = None,
+    persist: bool = True,
+) -> dict[str, Any]:
+    """
+    Run one incident.
+
+    Returns the final state dict. When the run pauses for human approval the
+    result contains an "__interrupt__" entry and a "thread_id" so the caller
+    can resume via resume_incident(). Completed runs persist their traces.
+    """
+    thread_id = thread_id or str(uuid4())
+    app = _app()
+    state = app.invoke({"event": event, "traces": []}, config=_thread_config(thread_id))
+    state["thread_id"] = thread_id
+
+    if "__interrupt__" not in state and persist:
+        _persist(state)
+    return state
+
+
+def resume_incident(
+    thread_id: str,
+    response: HumanApprovalResponse | dict[str, Any],
+    *,
+    persist: bool = True,
+) -> dict[str, Any]:
+    """Resume a paused incident with a human decision and finish the run."""
+    app = _app()
+    payload = (
+        response.model_dump(mode="json")
+        if isinstance(response, HumanApprovalResponse)
+        else response
+    )
+    state = app.invoke(Command(resume=payload), config=_thread_config(thread_id))
+    state["thread_id"] = thread_id
+
+    if "__interrupt__" not in state and persist:
+        _persist(state)
+    return state
+
+
+def _persist(state: dict[str, Any]) -> None:
+    event = state.get("event")
+    traces = state.get("traces") or []
+    if event is not None and traces:
+        path = write_traces(event.event_id, traces)
+        state["trace_path"] = str(path)

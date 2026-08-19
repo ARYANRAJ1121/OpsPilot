@@ -1,10 +1,16 @@
-"""Action Planner Agent — propose remediations that cite ToolOutputs only."""
+"""
+Action Planner Agent — propose remediations that cite ToolOutputs only.
+
+Tool selection is deterministic (no LLM decides what runs). The LLM, when
+configured, only rewrites each proposal's human-readable rationale.
+"""
 
 from __future__ import annotations
 
 from uuid import UUID
 
 from opspilot.agents._parsing import infer_service_name
+from opspilot.llm import enrich
 from opspilot.schemas import (
     ActionPlannerOutput,
     ActionProposal,
@@ -14,6 +20,19 @@ from opspilot.schemas import (
     KnowledgeRetrievalOutput,
     ToolOutput,
 )
+
+_RATIONALE_SYSTEM = (
+    "You are an SRE. Rewrite the remediation rationale in one clear sentence. "
+    "Keep it factual and tied to the evidence provided; do not change the action."
+)
+
+
+def _rationale(fallback: str, tool_name: str) -> str:
+    return enrich(
+        _RATIONALE_SYSTEM,
+        f"Action: {tool_name}. Draft rationale: {fallback}",
+        fallback=fallback,
+    )
 
 
 def run_action_planner(
@@ -43,9 +62,10 @@ def run_action_planner(
                 tool_name="restart_service",
                 parameters={"service": service, "target": "crashed-pods"},
                 evidence_refs=refs,
-                rationale=(
+                rationale=_rationale(
                     f"CrashLoopBackOff on {crash} pod(s) with error_rate={error_rate}%. "
-                    "Restart is reversible and matches the recovery runbook."
+                    "Restart is reversible and matches the recovery runbook.",
+                    "restart_service",
                 ),
             )
         )
@@ -56,7 +76,10 @@ def run_action_planner(
                 tool_name="throttle_traffic",
                 parameters={"service": service, "rate_pct": 50},
                 evidence_refs=refs,
-                rationale=f"Elevated error_rate={error_rate}% without a clear crashloop signal.",
+                rationale=_rationale(
+                    f"Elevated error_rate={error_rate}% without a clear crashloop signal.",
+                    "throttle_traffic",
+                ),
             )
         )
 
