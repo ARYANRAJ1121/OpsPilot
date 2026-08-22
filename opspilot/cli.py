@@ -1,0 +1,218 @@
+"""
+OpsPilot CLI — run incidents end-to-end from the terminal.
+
+Examples:
+    opspilot run "ALERT: api-service error rate 18%"
+    opspilot run --source logs --file alert.txt
+    opspilot eval
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+from opspilot.eval_harness import run_eval_suite
+from opspilot.graph import resume_incident, run_incident
+from opspilot.schemas import HumanApprovalDecision, IncidentEvent, IncidentSource
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="opspilot",
+        description="OpsPilot — provenance-aware multi-agent incident response",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    run_p = sub.add_parser("run", help="Run one incident through the full pipeline")
+    run_p.add_argument("alert", nargs="?", help="Alert text (or use --file)")
+    run_p.add_argument("--file", "-f", type=Path, help="Read alert content from a text file")
+    run_p.add_argument(
+        "--source",
+        choices=[s.value for s in IncidentSource],
+        default=IncidentSource.SLACK.value,
+        help="Incident source channel (default: slack)",
+    )
+    run_p.add_argument(
+        "--approve",
+        action="store_true",
+        help="Auto-approve if the pipeline pauses for human review",
+    )
+    run_p.add_argument(
+        "--reject",
+        action="store_true",
+        help="Auto-reject if the pipeline pauses for human review",
+    )
+    run_p.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="Print final state summary as JSON",
+    )
+    run_p.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Do not write traces to disk",
+    )
+
+    eval_p = sub.add_parser("eval", help="Run the offline evaluation harness")
+    eval_p.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="Print eval report as JSON",
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.command == "run":
+        return _cmd_run(args)
+    if args.command == "eval":
+        return _cmd_eval(args)
+    parser.error(f"unknown command: {args.command}")
+    return 2
+
+
+def _cmd_run(args: argparse.Namespace) -> int:
+    content = _resolve_alert(args)
+    if not content:
+        print("error: provide alert text or --file", file=sys.stderr)
+        return 2
+
+    event = IncidentEvent(source=IncidentSource(args.source), content=content)
+    print(f"> Running incident {event.event_id}")
+    print(f"  source={event.source.value}")
+    print(f"  alert={content[:120]}{'...' if len(content) > 120 else ''}")
+    print()
+
+    state = run_incident(event, persist=not args.no_persist)
+    state = _maybe_handle_approval(state, args)
+
+    _print_summary(state)
+    if args.as_json:
+        print(json.dumps(_jsonable_summary(state), indent=2, default=str))
+    return 0 if _succeeded(state) else 1
+
+
+def _cmd_eval(args: argparse.Namespace) -> int:
+    report = run_eval_suite()
+    if args.as_json:
+        print(json.dumps(report, indent=2, default=str))
+    else:
+        print(f"Eval: {report['passed']}/{report['total']} scenarios passed")
+        for row in report["results"]:
+            mark = "PASS" if row["ok"] else "FAIL"
+            print(f"  [{mark}] {row['name']}: {row['detail']}")
+    return 0 if report["failed"] == 0 else 1
+
+
+def _resolve_alert(args: argparse.Namespace) -> str:
+    if args.file is not None:
+        return Path(args.file).read_text(encoding="utf-8").strip()
+    return (args.alert or "").strip()
+
+
+def _maybe_handle_approval(state: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    if "__interrupt__" not in state:
+        return state
+
+    interrupt = state["__interrupt__"][0]
+    payload = interrupt.value if hasattr(interrupt, "value") else interrupt
+    proposals = payload.get("proposals") or []
+    context = payload.get("context_summary") or ""
+    request = payload.get("request") or {}
+    request_id = request.get("request_id")
+
+    print("PAUSE: Human approval required")
+    print(f"  context: {context[:200]}{'...' if len(context) > 200 else ''}")
+    for i, p in enumerate(proposals, 1):
+        print(f"  [{i}] {p.get('tool_name')} {p.get('parameters')}")
+        print(f"      rationale: {(p.get('rationale') or '')[:160]}")
+    print()
+
+    if args.approve and args.reject:
+        print("error: use only one of --approve / --reject", file=sys.stderr)
+        sys.exit(2)
+
+    if args.approve:
+        decision = HumanApprovalDecision.APPROVED
+        reviewer = "cli-auto-approve"
+        notes = "Auto-approved via --approve"
+    elif args.reject:
+        decision = HumanApprovalDecision.REJECTED
+        reviewer = "cli-auto-reject"
+        notes = "Auto-rejected via --reject"
+    elif sys.stdin.isatty():
+        choice = input("Approve proposals? [y/N]: ").strip().lower()
+        if choice in {"y", "yes"}:
+            decision = HumanApprovalDecision.APPROVED
+            notes = "Approved via interactive CLI"
+        else:
+            decision = HumanApprovalDecision.REJECTED
+            notes = "Rejected via interactive CLI"
+        reviewer = "cli-operator"
+    else:
+        print("error: non-interactive stdin; pass --approve or --reject", file=sys.stderr)
+        sys.exit(2)
+
+    print(f"-> Resuming with decision={decision.value}")
+    return resume_incident(
+        state["thread_id"],
+        {
+            "request_id": request_id,
+            "decision": decision.value,
+            "reviewer_id": reviewer,
+            "notes": notes,
+        },
+        persist=not args.no_persist,
+    )
+
+
+def _print_summary(state: dict[str, Any]) -> None:
+    routing = state.get("routing")
+    print("-- Result --")
+    if routing is not None:
+        print(f"  routing: {routing.routing_decision.value}")
+        print(f"  confidence: {routing.confidence_score}")
+    if state.get("execution") is not None:
+        ex = state["execution"]
+        print(f"  execution: success={ex.success} -- {ex.summary}")
+    if state.get("escalation") is not None:
+        print(f"  escalation: {state['escalation'].reason}")
+    if state.get("customer_comm") is not None:
+        print(f"  customer_comm: {state['customer_comm'].message_draft[:120]}")
+    if state.get("trace_path"):
+        print(f"  traces: {state['trace_path']}")
+    print()
+
+
+def _jsonable_summary(state: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {"thread_id": state.get("thread_id")}
+    for key in (
+        "routing",
+        "execution",
+        "escalation",
+        "provenance",
+        "policy",
+        "diagnosis",
+        "customer_comm",
+    ):
+        val = state.get(key)
+        if val is not None and hasattr(val, "model_dump"):
+            out[key] = val.model_dump(mode="json")
+    if state.get("trace_path"):
+        out["trace_path"] = state["trace_path"]
+    return out
+
+
+def _succeeded(state: dict[str, Any]) -> bool:
+    if state.get("execution") is not None:
+        return bool(state["execution"].success)
+    return state.get("escalation") is not None and "__interrupt__" not in state
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

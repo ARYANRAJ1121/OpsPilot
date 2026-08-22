@@ -94,8 +94,13 @@ opspilot/
 ├── schemas.py                  # All Pydantic v2 contracts — every data boundary
 ├── provenance_gate.py          # Deterministic Provenance Gate
 ├── policy_engine.py            # Deterministic Policy Engine
+├── config.py                   # Env-driven settings (offline defaults)
+├── llm.py                      # Optional LLM enrichment with heuristic fallback
 ├── confidence_router.py        # Deterministic Confidence & Risk Router
-├── graph.py                    # LangGraph graph definition
+├── trace_store.py              # JSONL incident trace persistence
+├── eval_harness.py             # Offline scenario evaluation suite
+├── cli.py                      # `opspilot run` / `opspilot eval`
+├── graph.py                    # LangGraph pipeline + human-in-the-loop
 ├── tools/
 │   └── simulated.py            # Simulated tool registry
 └── agents/
@@ -113,7 +118,9 @@ tests/
 ├── test_policy_engine.py
 ├── test_confidence_router.py
 ├── test_agents.py
-└── test_graph.py
+├── test_graph.py
+├── test_hitl.py
+└── test_eval_harness.py
 ```
 
 ---
@@ -126,11 +133,13 @@ tests/
 | Provenance Gate | ✅ Complete |
 | Policy Engine | ✅ Complete |
 | Simulated Tools | ✅ Complete |
-| Agents (8) | ✅ Heuristic / offline |
+| Agents (8) | ✅ Heuristic / offline (+ optional LLM prose) |
 | Confidence Router | ✅ Complete |
-| LangGraph Skeleton | ✅ Complete |
-| Human approval loop | 🔧 Request object only — no reviewer UI |
-| Eval Harness | ⬜ Pending |
+| LangGraph Pipeline | ✅ Complete |
+| Human approval loop | ✅ Interrupt / resume (CLI + API) |
+| Trace Store | ✅ JSONL |
+| Eval Harness | ✅ Offline scenarios |
+| CLI | ✅ `opspilot run` / `opspilot eval` |
 | Real Slack / Jira / GitHub adapters | ⬜ Pending |
 
 ---
@@ -143,9 +152,20 @@ cd OpsPilot
 
 pip install -e ".[dev]"
 
-cp .env.example .env   # add your LLM API key
+cp .env.example .env   # optional — works fully offline without keys
 
+# Run the test suite
 py -3.11 -m pytest tests/ -v
+
+# Run a simulated incident (auto-executes when safe)
+opspilot run "ALERT: api-service error rate 18% — p99 latency 4200ms"
+
+# Force human-approval path, then auto-approve
+set OPSPILOT_CONFIDENCE_THRESHOLD=0.99
+opspilot run --approve "ALERT: api-service error rate 18%"
+
+# Offline eval harness
+opspilot eval
 ```
 
 ---
