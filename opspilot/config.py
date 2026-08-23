@@ -25,7 +25,7 @@ except Exception:  # pragma: no cover - dotenv is optional at runtime
 class Settings:
     """Immutable snapshot of runtime settings."""
 
-    openai_api_key: str | None
+    groq_api_key: str | None
     llm_model: str
     llm_temperature: float
     llm_enabled: bool
@@ -35,7 +35,7 @@ class Settings:
     @property
     def llm_active(self) -> bool:
         """True only when an LLM is both enabled and has credentials."""
-        return self.llm_enabled and bool(self.openai_api_key)
+        return self.llm_enabled and bool(self.groq_api_key)
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -60,8 +60,8 @@ def get_settings() -> Settings:
     """Load settings once and cache them for the process lifetime."""
     trace_dir = Path(os.getenv("OPSPILOT_TRACE_DIR", "trace_store")).expanduser()
     return Settings(
-        openai_api_key=os.getenv("OPENAI_API_KEY") or None,
-        llm_model=os.getenv("OPSPILOT_LLM_MODEL", "gpt-4o-mini"),
+        groq_api_key=os.getenv("GROQ_API_KEY") or None,
+        llm_model=os.getenv("OPSPILOT_LLM_MODEL", "openai/gpt-oss-20b"),
         llm_temperature=_env_float("OPSPILOT_LLM_TEMPERATURE", 0.1),
         llm_enabled=_env_bool("OPSPILOT_LLM_ENABLED", True),
         confidence_auto_execute_threshold=_env_float(

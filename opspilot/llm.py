@@ -1,7 +1,7 @@
 """
 opspilot/llm.py
 
-Thin, defensive wrapper around the chat LLM.
+Thin, defensive wrapper around the chat LLM (Groq).
 
 Design rule that mirrors the rest of OpsPilot: the LLM only ever enriches
 *narrative* fields (diagnosis prose, customer messages, rationales). It
@@ -32,17 +32,17 @@ def _get_model():
     if not settings.llm_active:
         return None
 
-    cache_key = f"{settings.llm_model}:{settings.llm_temperature}"
+    cache_key = f"groq:{settings.llm_model}:{settings.llm_temperature}"
     if cache_key in _MODEL_CACHE:
         return _MODEL_CACHE[cache_key]
 
     try:
-        from langchain_openai import ChatOpenAI
+        from langchain_groq import ChatGroq
 
-        model = ChatOpenAI(
+        model = ChatGroq(
             model=settings.llm_model,
             temperature=settings.llm_temperature,
-            api_key=settings.openai_api_key,
+            api_key=settings.groq_api_key,
         )
         _MODEL_CACHE[cache_key] = model
         return model
