@@ -101,6 +101,8 @@ opspilot/
 ├── eval_harness.py             # Offline scenario evaluation suite
 ├── cli.py                      # `opspilot run` / `opspilot eval`
 ├── graph.py                    # LangGraph pipeline + human-in-the-loop
+├── integrations/
+│   └── slack/                  # Bolt + FastAPI Slack adapter
 ├── tools/
 │   └── simulated.py            # Simulated tool registry
 └── agents/
@@ -120,7 +122,8 @@ tests/
 ├── test_agents.py
 ├── test_graph.py
 ├── test_hitl.py
-└── test_eval_harness.py
+├── test_eval_harness.py
+└── test_slack_adapter.py
 ```
 
 ---
@@ -140,7 +143,8 @@ tests/
 | Trace Store | ✅ JSONL |
 | Eval Harness | ✅ Offline scenarios |
 | CLI | ✅ `opspilot run` / `opspilot eval` |
-| Real Slack / Jira / GitHub adapters | ⬜ Pending |
+| Slack adapter (Bolt + FastAPI) | ✅ Events, enrichment, HITL buttons |
+| Real Jira / GitHub adapters | ⬜ Pending |
 
 ---
 
@@ -166,10 +170,16 @@ opspilot run --approve "ALERT: api-service error rate 18%"
 
 # Offline eval harness
 opspilot eval
+
+# Slack Events webhook (requires SLACK_* env vars)
+uvicorn opspilot.integrations.slack.webhook:app --host 0.0.0.0 --port 8000
 ```
+
+Point Slack Event Subscriptions at `https://<host>/slack/events` for `message` and
+`app_mention`, and Interactivity at `/slack/interactions`.
 
 ---
 
 ## Stack
 
-[LangGraph](https://github.com/langchain-ai/langgraph) · [LangChain](https://github.com/langchain-ai/langchain) · [Pydantic v2](https://docs.pydantic.dev) · [structlog](https://www.structlog.org) · [ruff](https://github.com/astral-sh/ruff) · [mypy strict](https://mypy-lang.org) · Python 3.11+
+[LangGraph](https://github.com/langchain-ai/langgraph) · [LangChain](https://github.com/langchain-ai/langchain) · [Pydantic v2](https://docs.pydantic.dev) · [slack-bolt](https://slack.dev/bolt-python/) · [FastAPI](https://fastapi.tiangolo.com/) · [structlog](https://www.structlog.org) · [ruff](https://github.com/astral-sh/ruff) · [mypy strict](https://mypy-lang.org) · Python 3.11+

@@ -31,11 +31,23 @@ class Settings:
     llm_enabled: bool
     confidence_auto_execute_threshold: float
     trace_dir: Path
+    # Slack adapter
+    slack_bot_token: str | None
+    slack_signing_secret: str | None
+    slack_app_token: str | None
+    slack_allowed_channels: tuple[str, ...]
+    slack_status_poll_seconds: float
+    slack_ack_timeout_seconds: float
+    slack_max_incidents_per_minute: int
 
     @property
     def llm_active(self) -> bool:
         """True only when an LLM is both enabled and has credentials."""
         return self.llm_enabled and bool(self.groq_api_key)
+
+    @property
+    def slack_configured(self) -> bool:
+        return bool(self.slack_bot_token and self.slack_signing_secret)
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -55,6 +67,22 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_csv(name: str) -> tuple[str, ...]:
+    raw = os.getenv(name, "")
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return tuple(parts)
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Load settings once and cache them for the process lifetime."""
@@ -68,6 +96,13 @@ def get_settings() -> Settings:
             "OPSPILOT_CONFIDENCE_THRESHOLD", 0.7
         ),
         trace_dir=trace_dir,
+        slack_bot_token=os.getenv("SLACK_BOT_TOKEN") or None,
+        slack_signing_secret=os.getenv("SLACK_SIGNING_SECRET") or None,
+        slack_app_token=os.getenv("SLACK_APP_TOKEN") or None,
+        slack_allowed_channels=_env_csv("SLACK_ALLOWED_CHANNELS"),
+        slack_status_poll_seconds=_env_float("SLACK_STATUS_POLL_SECONDS", 5.0),
+        slack_ack_timeout_seconds=_env_float("SLACK_ACK_TIMEOUT_SECONDS", 3.0),
+        slack_max_incidents_per_minute=_env_int("SLACK_MAX_INCIDENTS_PER_MINUTE", 30),
     )
 
 
