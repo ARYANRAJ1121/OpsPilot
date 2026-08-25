@@ -9,6 +9,8 @@ never selects tools or makes the execute/approve decision — those stay in
 deterministic Python. Every call falls back to a caller-supplied string if
 the model is disabled, unauthenticated, or errors out, so the whole system
 runs offline with no behavioural change to the safety path.
+
+Guardrails screen input and output; on block we return `fallback`.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from __future__ import annotations
 import structlog
 
 from opspilot.config import get_settings
+from opspilot.guardrails import check_input, check_output, check_with_groq_judge
 
 log = structlog.get_logger(__name__)
 
@@ -25,6 +28,10 @@ _MODEL_CACHE: dict[str, object] = {}
 def llm_active() -> bool:
     """True when a usable LLM is configured."""
     return get_settings().llm_active
+
+
+def clear_model_cache() -> None:
+    _MODEL_CACHE.clear()
 
 
 def _get_model():
@@ -55,9 +62,12 @@ def enrich(system_prompt: str, user_prompt: str, *, fallback: str) -> str:
     """
     Ask the LLM to produce a short narrative string.
 
-    Returns `fallback` unchanged whenever the LLM is unavailable or raises.
-    The result is never allowed to be empty.
+    Returns `fallback` unchanged whenever the LLM is unavailable, blocked by
+    guardrails, or raises. The result is never allowed to be empty.
     """
+    if not check_input(user_prompt).allowed:
+        return fallback
+
     model = _get_model()
     if model is None:
         return fallback
@@ -70,6 +80,10 @@ def enrich(system_prompt: str, user_prompt: str, *, fallback: str) -> str:
         )
         text = (getattr(response, "content", "") or "").strip()
         if not text:
+            return fallback
+        if not check_output(text).allowed:
+            return fallback
+        if not check_with_groq_judge(text, role="output").allowed:
             return fallback
         log.info("llm.enrich_ok", chars=len(text))
         return text

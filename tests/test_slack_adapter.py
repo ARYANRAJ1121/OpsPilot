@@ -30,6 +30,8 @@ def _settings(**overrides: Any) -> Settings:
         slack_status_poll_seconds=0.05,
         slack_ack_timeout_seconds=3.0,
         slack_max_incidents_per_minute=30,
+        guardrails_enabled=True,
+        guardrails_llm=False,
     )
     base.update(overrides)
     return Settings(**base)

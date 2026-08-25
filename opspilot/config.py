@@ -39,6 +39,9 @@ class Settings:
     slack_status_poll_seconds: float
     slack_ack_timeout_seconds: float
     slack_max_incidents_per_minute: int
+    # Guardrails (deterministic always; optional Groq judge)
+    guardrails_enabled: bool
+    guardrails_llm: bool
 
     @property
     def llm_active(self) -> bool:
@@ -103,6 +106,8 @@ def get_settings() -> Settings:
         slack_status_poll_seconds=_env_float("SLACK_STATUS_POLL_SECONDS", 5.0),
         slack_ack_timeout_seconds=_env_float("SLACK_ACK_TIMEOUT_SECONDS", 3.0),
         slack_max_incidents_per_minute=_env_int("SLACK_MAX_INCIDENTS_PER_MINUTE", 30),
+        guardrails_enabled=_env_bool("OPSPILOT_GUARDRAILS_ENABLED", True),
+        guardrails_llm=_env_bool("OPSPILOT_GUARDRAILS_LLM", False),
     )
 
 

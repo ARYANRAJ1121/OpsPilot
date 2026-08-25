@@ -14,7 +14,9 @@
 
 ---
 
-OpsPilot is a **multi-agent incident-response system** built on LangGraph. It ingests alerts from Slack, support tickets, logs, and GitHub Issues — investigates them in parallel across specialised agents — then routes remediation actions through two deterministic safety gates before anything is executed.
+OpsPilot is a **multi-agent incident-response system** built on LangGraph. It ingests alerts from Slack (and can extend to tickets, logs, GitHub Issues) — investigates them in parallel across specialised agents — then routes remediation actions through two deterministic safety gates before anything is executed.
+
+Narrative enrichment uses **Groq’s free tier** when `GROQ_API_KEY` is set; without a key the system stays fully offline on heuristics. Remediations use **simulated tools** by default so you can run at **$0**.
 
 No LLM decides what gets executed. That decision belongs to pure-Python logic that can be audited, unit-tested, and trusted.
 
@@ -95,7 +97,8 @@ opspilot/
 ├── provenance_gate.py          # Deterministic Provenance Gate
 ├── policy_engine.py            # Deterministic Policy Engine
 ├── config.py                   # Env-driven settings (offline defaults)
-├── llm.py                      # Optional LLM enrichment with heuristic fallback
+├── llm.py                      # Groq narrative enrichment + guardrails hook
+├── guardrails.py               # Deterministic (+ optional Groq) text guardrails
 ├── confidence_router.py        # Deterministic Confidence & Risk Router
 ├── trace_store.py              # JSONL incident trace persistence
 ├── eval_harness.py             # Offline scenario evaluation suite
@@ -144,7 +147,11 @@ tests/
 | Eval Harness | ✅ Offline scenarios |
 | CLI | ✅ `opspilot run` / `opspilot eval` |
 | Slack adapter (Bolt + FastAPI) | ✅ Events, enrichment, HITL buttons |
+| Groq enrichment + guardrails | ✅ Free-tier compatible |
+| Free Slack + Groq go-live guide | ✅ `docs/FREE_SLACK_GROQ.md` |
 | Real Jira / GitHub adapters | ⬜ Pending |
+| Real cloud remediations | ⬜ Pending (simulated by design for $0) |
+| LLM-backed agent planning | ⬜ Pending (heuristics + Groq prose today) |
 
 ---
 
@@ -161,6 +168,12 @@ cp .env.example .env   # optional — works fully offline without keys
 # Run the test suite
 py -3.11 -m pytest tests/ -v
 
+# Check free Slack + Groq config
+opspilot doctor
+
+# Local Slack adapter smoke (no Slack network)
+opspilot smoke-slack
+
 # Run a simulated incident (auto-executes when safe)
 opspilot run "ALERT: api-service error rate 18% — p99 latency 4200ms"
 
@@ -171,15 +184,18 @@ opspilot run --approve "ALERT: api-service error rate 18%"
 # Offline eval harness
 opspilot eval
 
-# Slack Events webhook (requires SLACK_* env vars)
+# Live free Slack webhook — full steps in docs/FREE_SLACK_GROQ.md
 uvicorn opspilot.integrations.slack.webhook:app --host 0.0.0.0 --port 8000
+# then: cloudflared tunnel --url http://127.0.0.1:8000
 ```
 
-Point Slack Event Subscriptions at `https://<host>/slack/events` for `message` and
+Point Slack Event Subscriptions at `https://<tunnel>/slack/events` for `message` /
 `app_mention`, and Interactivity at `/slack/interactions`.
+
+**Free setup guide:** [docs/FREE_SLACK_GROQ.md](./docs/FREE_SLACK_GROQ.md)
 
 ---
 
 ## Stack
 
-[LangGraph](https://github.com/langchain-ai/langgraph) · [LangChain](https://github.com/langchain-ai/langchain) · [Pydantic v2](https://docs.pydantic.dev) · [slack-bolt](https://slack.dev/bolt-python/) · [FastAPI](https://fastapi.tiangolo.com/) · [structlog](https://www.structlog.org) · [ruff](https://github.com/astral-sh/ruff) · [mypy strict](https://mypy-lang.org) · Python 3.11+
+[LangGraph](https://github.com/langchain-ai/langgraph) · [LangChain](https://github.com/langchain-ai/langchain) · [Groq](https://console.groq.com) (free tier) · [Pydantic v2](https://docs.pydantic.dev) · [slack-bolt](https://slack.dev/bolt-python/) · [FastAPI](https://fastapi.tiangolo.com/) · [structlog](https://www.structlog.org) · [ruff](https://github.com/astral-sh/ruff) · [mypy strict](https://mypy-lang.org) · Python 3.11+

@@ -66,12 +66,22 @@ def main(argv: list[str] | None = None) -> int:
         help="Print eval report as JSON",
     )
 
+    sub.add_parser("doctor", help="Check free Slack + Groq configuration")
+    sub.add_parser(
+        "smoke-slack",
+        help="Local SlackAdapter smoke test (no Slack network)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "run":
         return _cmd_run(args)
     if args.command == "eval":
         return _cmd_eval(args)
+    if args.command == "doctor":
+        return _cmd_doctor()
+    if args.command == "smoke-slack":
+        return _cmd_smoke_slack()
     parser.error(f"unknown command: {args.command}")
     return 2
 
@@ -107,6 +117,40 @@ def _cmd_eval(args: argparse.Namespace) -> int:
             mark = "PASS" if row["ok"] else "FAIL"
             print(f"  [{mark}] {row['name']}: {row['detail']}")
     return 0 if report["failed"] == 0 else 1
+
+
+def _cmd_doctor() -> int:
+    from opspilot.config import get_settings
+
+    s = get_settings()
+    print("OpsPilot doctor (free Slack + Groq)")
+    print(f"  groq_key_set:        {bool(s.groq_api_key)}")
+    print(f"  llm_enabled:         {s.llm_enabled}")
+    print(f"  llm_active:          {s.llm_active}")
+    print(f"  llm_model:           {s.llm_model}")
+    print(f"  guardrails_enabled:  {s.guardrails_enabled}")
+    print(f"  guardrails_llm:      {s.guardrails_llm}")
+    print(f"  slack_bot_token_set: {bool(s.slack_bot_token)}")
+    print(f"  slack_signing_set:   {bool(s.slack_signing_secret)}")
+    print(f"  slack_configured:    {s.slack_configured}")
+    print(f"  allowed_channels:    {s.slack_allowed_channels or '(all)'}")
+    print(f"  trace_dir:           {s.trace_dir}")
+    print()
+    if not s.llm_active:
+        print("  tip: set GROQ_API_KEY for free narrative enrichment")
+    if not s.slack_configured:
+        print("  tip: set SLACK_BOT_TOKEN + SLACK_SIGNING_SECRET for live Slack")
+        print("       see docs/FREE_SLACK_GROQ.md")
+    else:
+        print("  Slack env looks ready — run webhook + cloudflared tunnel")
+        print("       see docs/FREE_SLACK_GROQ.md")
+    return 0
+
+
+def _cmd_smoke_slack() -> int:
+    from opspilot.integrations.slack.smoke import main as smoke_main
+
+    return smoke_main()
 
 
 def _resolve_alert(args: argparse.Namespace) -> str:
