@@ -42,11 +42,19 @@ class Settings:
     # Guardrails (deterministic always; optional Groq judge)
     guardrails_enabled: bool
     guardrails_llm: bool
+    # LLM-driven tool selection / action planning
+    llm_planning: bool
+    llm_planning_model: str
 
     @property
     def llm_active(self) -> bool:
         """True only when an LLM is both enabled and has credentials."""
         return self.llm_enabled and bool(self.groq_api_key)
+
+    @property
+    def llm_planning_active(self) -> bool:
+        """True when LLM-driven tool/action planning is enabled and usable."""
+        return self.llm_active and self.llm_planning
 
     @property
     def slack_configured(self) -> bool:
@@ -108,6 +116,10 @@ def get_settings() -> Settings:
         slack_max_incidents_per_minute=_env_int("SLACK_MAX_INCIDENTS_PER_MINUTE", 30),
         guardrails_enabled=_env_bool("OPSPILOT_GUARDRAILS_ENABLED", True),
         guardrails_llm=_env_bool("OPSPILOT_GUARDRAILS_LLM", False),
+        llm_planning=_env_bool("OPSPILOT_LLM_PLANNING", True),
+        llm_planning_model=os.getenv(
+            "OPSPILOT_LLM_PLANNING_MODEL", "llama-3.3-70b-versatile"
+        ),
     )
 
 

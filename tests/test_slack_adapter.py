@@ -32,6 +32,8 @@ def _settings(**overrides: Any) -> Settings:
         slack_max_incidents_per_minute=30,
         guardrails_enabled=True,
         guardrails_llm=False,
+        llm_planning=False,
+        llm_planning_model="llama-3.3-70b-versatile",
     )
     base.update(overrides)
     return Settings(**base)
