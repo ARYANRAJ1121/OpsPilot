@@ -27,7 +27,7 @@ _INJECTION_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 # Model output must stay narrative — reject tool/command leakage.
 _OUTPUT_LEAK_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"\b(run_db_migration|teardown_infra|rotate_secret|wipe_queue)\b", re.I),
+    re.compile(r"\b(run_db_migration|teardown_infra|rotate_secret|wipe_queue|delete_resource|modify_iam_policy|force_failover)\b", re.I),
     re.compile(r"\b(curl|wget|powershell|bash\s+-c|rm\s+-rf)\b", re.I),
     re.compile(r"api[_-]?key\s*[:=]\s*\S+", re.I),
     re.compile(r"gsk_[A-Za-z0-9]{20,}"),  # Groq-style keys accidentally echoed
