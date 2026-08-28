@@ -35,6 +35,7 @@ class IncidentSource(str, Enum):
     SUPPORT_TICKET = "support_ticket"
     LOGS = "logs"
     GITHUB_ISSUES = "github_issues"
+    JIRA = "jira"
 
 
 class ToolPermissionTier(str, Enum):
