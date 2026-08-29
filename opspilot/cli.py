@@ -123,27 +123,37 @@ def _cmd_doctor() -> int:
     from opspilot.config import get_settings
 
     s = get_settings()
-    print("OpsPilot doctor (free Slack + Groq)")
+    print("OpsPilot doctor (free Slack + Groq + webhooks)")
     print(f"  groq_key_set:        {bool(s.groq_api_key)}")
     print(f"  llm_enabled:         {s.llm_enabled}")
     print(f"  llm_active:          {s.llm_active}")
     print(f"  llm_model:           {s.llm_model}")
+    print(f"  llm_planning:        {s.llm_planning}")
+    print(f"  llm_planning_active: {s.llm_planning_active}")
     print(f"  guardrails_enabled:  {s.guardrails_enabled}")
     print(f"  guardrails_llm:      {s.guardrails_llm}")
     print(f"  slack_bot_token_set: {bool(s.slack_bot_token)}")
     print(f"  slack_signing_set:   {bool(s.slack_signing_secret)}")
     print(f"  slack_configured:    {s.slack_configured}")
     print(f"  allowed_channels:    {s.slack_allowed_channels or '(all)'}")
+    print(f"  jira_secret_set:     {bool(s.jira_webhook_secret)}")
+    print(f"  github_secret_set:   {bool(s.github_webhook_secret)}")
+    print(f"  require_signatures:  {s.webhook_require_signatures}")
     print(f"  trace_dir:           {s.trace_dir}")
     print()
     if not s.llm_active:
         print("  tip: set GROQ_API_KEY for free narrative enrichment")
     if not s.slack_configured:
         print("  tip: set SLACK_BOT_TOKEN + SLACK_SIGNING_SECRET for live Slack")
-        print("       see docs/FREE_SLACK_GROQ.md")
     else:
-        print("  Slack env looks ready — run webhook + cloudflared tunnel")
-        print("       see docs/FREE_SLACK_GROQ.md")
+        print("  Slack env looks ready")
+    if s.webhook_require_signatures and not (
+        s.jira_webhook_secret and s.github_webhook_secret
+    ):
+        print("  tip: set JIRA_WEBHOOK_SECRET / GITHUB_WEBHOOK_SECRET")
+        print("       or set OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES=false for local dev")
+    print("  unified server: uvicorn opspilot.server:app --host 0.0.0.0 --port 8000")
+    print("  guide: docs/FREE_SLACK_GROQ.md")
     return 0
 
 

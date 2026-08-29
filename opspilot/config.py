@@ -45,6 +45,10 @@ class Settings:
     # LLM-driven tool selection / action planning
     llm_planning: bool
     llm_planning_model: str
+    # Jira / GitHub webhook secrets
+    jira_webhook_secret: str | None
+    github_webhook_secret: str | None
+    webhook_require_signatures: bool
 
     @property
     def llm_active(self) -> bool:
@@ -59,6 +63,14 @@ class Settings:
     @property
     def slack_configured(self) -> bool:
         return bool(self.slack_bot_token and self.slack_signing_secret)
+
+    @property
+    def jira_configured(self) -> bool:
+        return bool(self.jira_webhook_secret) or not self.webhook_require_signatures
+
+    @property
+    def github_configured(self) -> bool:
+        return bool(self.github_webhook_secret) or not self.webhook_require_signatures
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -119,6 +131,11 @@ def get_settings() -> Settings:
         llm_planning=_env_bool("OPSPILOT_LLM_PLANNING", True),
         llm_planning_model=os.getenv(
             "OPSPILOT_LLM_PLANNING_MODEL", "llama-3.3-70b-versatile"
+        ),
+        jira_webhook_secret=os.getenv("JIRA_WEBHOOK_SECRET") or None,
+        github_webhook_secret=os.getenv("GITHUB_WEBHOOK_SECRET") or None,
+        webhook_require_signatures=_env_bool(
+            "OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES", False
         ),
     )
 

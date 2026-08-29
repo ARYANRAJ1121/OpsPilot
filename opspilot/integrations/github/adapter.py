@@ -151,9 +151,11 @@ def create_github_webhook_app():
     """
     Create a FastAPI app for receiving GitHub webhooks.
 
-    Mount at /github/webhook in your server or run standalone for testing.
+    Prefer the unified server: ``uvicorn opspilot.server:app``.
     """
     try:
+        import json
+
         from fastapi import FastAPI, Request
         from fastapi.responses import JSONResponse
     except ImportError:
@@ -162,12 +164,28 @@ def create_github_webhook_app():
             "Install with: pip install fastapi uvicorn"
         )
 
+    from opspilot.config import get_settings
+    from opspilot.integrations.signing import verify_github_signature
+
     app = FastAPI(title="OpsPilot GitHub Webhook", docs_url="/github/docs")
 
     @app.post("/github/webhook")
     async def github_webhook(request: Request) -> JSONResponse:
+        s = get_settings()
+        body = await request.body()
+        ok = verify_github_signature(
+            body,
+            request.headers.get("X-Hub-Signature-256"),
+            s.github_webhook_secret,
+            require=s.webhook_require_signatures,
+        )
+        if not ok:
+            return JSONResponse({"status": "unauthorized"}, status_code=401)
         event_type = request.headers.get("X-GitHub-Event", "issues")
-        raw = await request.json()
+        try:
+            raw = json.loads(body.decode("utf-8"))
+        except Exception:
+            return JSONResponse({"status": "bad_request"}, status_code=400)
         result = handle_github_webhook(raw, event_type=event_type)
         if result is None:
             return JSONResponse({"status": "ignored"}, status_code=200)

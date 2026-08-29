@@ -104,8 +104,12 @@ opspilot/
 ├── eval_harness.py             # Offline scenario evaluation suite
 ├── cli.py                      # `opspilot run` / `opspilot eval`
 ├── graph.py                    # LangGraph pipeline + human-in-the-loop
+├── server.py                   # Unified Slack + Jira + GitHub FastAPI app
 ├── integrations/
-│   └── slack/                  # Bolt + FastAPI Slack adapter
+│   ├── slack/                  # Bolt + FastAPI Slack adapter
+│   ├── jira/                   # Jira issue/comment webhook adapter
+│   ├── github/                 # GitHub Issues webhook adapter
+│   └── signing.py              # Webhook HMAC / shared-secret checks
 ├── tools/
 │   └── simulated.py            # Simulated tool registry
 └── agents/
@@ -147,11 +151,13 @@ tests/
 | Eval Harness | ✅ Offline scenarios |
 | CLI | ✅ `opspilot run` / `opspilot eval` |
 | Slack adapter (Bolt + FastAPI) | ✅ Events, enrichment, HITL buttons |
+| Jira / GitHub webhook adapters | ✅ Issue/comment ingest + signature checks |
+| Unified ingest server | ✅ `opspilot.server:app` (one tunnel) |
 | Groq enrichment + guardrails | ✅ Free-tier compatible |
-| Free Slack + Groq go-live guide | ✅ `docs/FREE_SLACK_GROQ.md` |
-| Real Jira / GitHub adapters | ⬜ Pending |
+| LLM tool / action planning | ✅ Groq planner with heuristic fallback |
+| Free go-live guide | ✅ `docs/FREE_SLACK_GROQ.md` |
 | Real cloud remediations | ⬜ Pending (simulated by design for $0) |
-| LLM-backed agent planning | ⬜ Pending (heuristics + Groq prose today) |
+| Durable store / web HITL UI | ⬜ Pending (`MemorySaver` + JSONL today) |
 
 ---
 
@@ -184,13 +190,13 @@ opspilot run --approve "ALERT: api-service error rate 18%"
 # Offline eval harness
 opspilot eval
 
-# Live free Slack webhook — full steps in docs/FREE_SLACK_GROQ.md
-uvicorn opspilot.integrations.slack.webhook:app --host 0.0.0.0 --port 8000
+# Unified free ingest (Slack + Jira + GitHub) — docs/FREE_SLACK_GROQ.md
+uvicorn opspilot.server:app --host 0.0.0.0 --port 8000
 # then: cloudflared tunnel --url http://127.0.0.1:8000
 ```
 
-Point Slack Event Subscriptions at `https://<tunnel>/slack/events` for `message` /
-`app_mention`, and Interactivity at `/slack/interactions`.
+Point Slack at `/slack/events` and `/slack/interactions`, Jira at `/jira/webhook`,
+GitHub at `/github/webhook` on the same tunnel URL.
 
 **Free setup guide:** [docs/FREE_SLACK_GROQ.md](./docs/FREE_SLACK_GROQ.md)
 

@@ -34,6 +34,9 @@ def _settings(**overrides: Any) -> Settings:
         guardrails_llm=False,
         llm_planning=False,
         llm_planning_model="llama-3.3-70b-versatile",
+        jira_webhook_secret=None,
+        github_webhook_secret=None,
+        webhook_require_signatures=False,
     )
     base.update(overrides)
     return Settings(**base)
