@@ -49,6 +49,15 @@ class Settings:
     jira_webhook_secret: str | None
     github_webhook_secret: str | None
     webhook_require_signatures: bool
+    # Durable HITL / checkpoints
+    checkpoint_backend: str  # "sqlite" | "memory"
+    checkpoint_path: Path
+    approval_queue_path: Path
+    approval_api_token: str | None
+    # Remediation: simulated | dry_run ($0). Real cloud via register_tool_override.
+    remediation_mode: str
+    tickets_webhook_secret: str | None
+    logs_webhook_secret: str | None
 
     @property
     def llm_active(self) -> bool:
@@ -137,6 +146,24 @@ def get_settings() -> Settings:
         webhook_require_signatures=_env_bool(
             "OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES", False
         ),
+        checkpoint_backend=os.getenv("OPSPILOT_CHECKPOINT_BACKEND", "sqlite")
+        .strip()
+        .lower(),
+        checkpoint_path=Path(
+            os.getenv("OPSPILOT_CHECKPOINT_PATH", str(trace_dir / "checkpoints.sqlite"))
+        ).expanduser(),
+        approval_queue_path=Path(
+            os.getenv(
+                "OPSPILOT_APPROVAL_QUEUE_PATH",
+                str(trace_dir / "pending_approvals.json"),
+            )
+        ).expanduser(),
+        approval_api_token=os.getenv("OPSPILOT_APPROVAL_API_TOKEN") or None,
+        remediation_mode=os.getenv("OPSPILOT_REMEDIATION_MODE", "simulated")
+        .strip()
+        .lower(),
+        tickets_webhook_secret=os.getenv("TICKETS_WEBHOOK_SECRET") or None,
+        logs_webhook_secret=os.getenv("LOGS_WEBHOOK_SECRET") or None,
     )
 
 

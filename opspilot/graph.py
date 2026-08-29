@@ -20,7 +20,6 @@ from operator import add
 from typing import Annotated, Any, TypedDict
 from uuid import UUID, uuid4
 
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
@@ -32,6 +31,8 @@ from opspilot.agents.ingestion import run_ingestion
 from opspilot.agents.investigation import run_investigation
 from opspilot.agents.knowledge_retrieval import run_knowledge_retrieval
 from opspilot.agents.router import run_router
+from opspilot.approval_queue import PendingApproval, remove_by_thread, upsert_pending
+from opspilot.checkpoint import get_checkpointer, reset_checkpointer
 from opspilot.confidence_router import run_confidence_router
 from opspilot.policy_engine import run_policy_engine
 from opspilot.provenance_gate import check_provenance
@@ -427,11 +428,11 @@ def build_graph(*, checkpointer: Any | None = None):
     graph.add_edge("execution", END)
     graph.add_edge("escalate", END)
 
-    return graph.compile(checkpointer=checkpointer or MemorySaver())
+    return graph.compile(checkpointer=checkpointer or get_checkpointer())
 
 
-# A single compiled app is reused so its in-memory checkpointer persists
-# state across the invoke/resume boundary within one process.
+# A single compiled app is reused so its checkpointer persists state across
+# the invoke/resume boundary (SQLite by default — survives process restart).
 _APP = None
 
 
@@ -442,8 +443,39 @@ def _app():
     return _APP
 
 
+def reset_graph_app() -> None:
+    """Drop compiled graph + checkpointer cache (tests / settings changes)."""
+    global _APP
+    _APP = None
+    reset_checkpointer()
+
+
 def _thread_config(thread_id: str) -> dict[str, Any]:
     return {"configurable": {"thread_id": thread_id}}
+
+
+def _register_pending_approval(state: dict[str, Any]) -> None:
+    interrupt_list = state.get("__interrupt__") or []
+    if not interrupt_list:
+        return
+    first = interrupt_list[0]
+    payload = first.value if hasattr(first, "value") else first
+    if not isinstance(payload, dict):
+        return
+    request = payload.get("request") or {}
+    event = state.get("event")
+    event_id = str(request.get("event_id") or (event.event_id if event else ""))
+    request_id = str(request.get("request_id") or event_id)
+    upsert_pending(
+        PendingApproval(
+            thread_id=state["thread_id"],
+            event_id=event_id,
+            request_id=request_id,
+            context_summary=str(payload.get("context_summary") or ""),
+            proposals=list(payload.get("proposals") or []),
+            source=event.source.value if event is not None else None,
+        )
+    )
 
 
 def run_incident(
@@ -464,7 +496,9 @@ def run_incident(
     state = app.invoke({"event": event, "traces": []}, config=_thread_config(thread_id))
     state["thread_id"] = thread_id
 
-    if "__interrupt__" not in state and persist:
+    if "__interrupt__" in state:
+        _register_pending_approval(state)
+    elif persist:
         _persist(state)
     return state
 
@@ -484,6 +518,7 @@ def resume_incident(
     )
     state = app.invoke(Command(resume=payload), config=_thread_config(thread_id))
     state["thread_id"] = thread_id
+    remove_by_thread(thread_id)
 
     if "__interrupt__" not in state and persist:
         _persist(state)

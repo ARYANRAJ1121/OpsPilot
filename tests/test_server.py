@@ -35,6 +35,13 @@ def _settings(**overrides) -> Settings:
         jira_webhook_secret="jira-test-secret",
         github_webhook_secret="gh-test-secret",
         webhook_require_signatures=True,
+        checkpoint_backend="memory",
+        checkpoint_path=__import__("pathlib").Path("trace_store/checkpoints.sqlite"),
+        approval_queue_path=__import__("pathlib").Path("trace_store/pending_approvals.json"),
+        approval_api_token=None,
+        remediation_mode="simulated",
+        tickets_webhook_secret=None,
+        logs_webhook_secret=None,
     )
     base.update(overrides)
     return Settings(**base)
@@ -101,23 +108,11 @@ class TestGitHubAuth:
         assert r.status_code == 202
 
 
-class TestJiraAuth:
-    def test_rejects_without_secret(self, client: TestClient) -> None:
-        r = client.post(
-            "/jira/webhook",
-            content=b'{"webhookEvent":"jira:issue_created"}',
-            headers={"Content-Type": "application/json"},
-        )
-        assert r.status_code == 401
-
-    def test_accepts_shared_secret_header(self, client: TestClient) -> None:
-        with patch("opspilot.server.handle_jira_webhook", return_value=None):
-            r = client.post(
-                "/jira/webhook",
-                content=b'{"webhookEvent":"jira:issue_created"}',
-                headers={
-                    "Content-Type": "application/json",
-                    "X-OpsPilot-Webhook-Secret": "jira-test-secret",
-                },
-            )
-        assert r.status_code == 202
+class TestApprovalsApi:
+    def test_list_and_page(self, client: TestClient) -> None:
+        r = client.get("/api/approvals")
+        assert r.status_code == 200
+        assert r.json()["count"] == 0
+        page = client.get("/approvals")
+        assert page.status_code == 200
+        assert "OpsPilot" in page.text

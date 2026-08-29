@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from opspilot.schemas import ActionProposal, ExecutionResult
-from opspilot.tools.simulated import execute_tool
+from opspilot.tools.executor import execute_tool
 
 
 def run_execution(event_id: UUID, proposals: list[ActionProposal]) -> ExecutionResult:

@@ -138,7 +138,13 @@ def _cmd_doctor() -> int:
     print(f"  allowed_channels:    {s.slack_allowed_channels or '(all)'}")
     print(f"  jira_secret_set:     {bool(s.jira_webhook_secret)}")
     print(f"  github_secret_set:   {bool(s.github_webhook_secret)}")
+    print(f"  tickets_secret_set:  {bool(s.tickets_webhook_secret)}")
+    print(f"  logs_secret_set:     {bool(s.logs_webhook_secret)}")
     print(f"  require_signatures:  {s.webhook_require_signatures}")
+    print(f"  checkpoint_backend:  {s.checkpoint_backend}")
+    print(f"  checkpoint_path:     {s.checkpoint_path}")
+    print(f"  approval_queue:      {s.approval_queue_path}")
+    print(f"  remediation_mode:    {s.remediation_mode}")
     print(f"  trace_dir:           {s.trace_dir}")
     print()
     if not s.llm_active:
@@ -153,6 +159,7 @@ def _cmd_doctor() -> int:
         print("  tip: set JIRA_WEBHOOK_SECRET / GITHUB_WEBHOOK_SECRET")
         print("       or set OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES=false for local dev")
     print("  unified server: uvicorn opspilot.server:app --host 0.0.0.0 --port 8000")
+    print("  approvals UI:   http://127.0.0.1:8000/approvals")
     print("  guide: docs/FREE_SLACK_GROQ.md")
     return 0
 

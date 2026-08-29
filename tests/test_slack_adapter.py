@@ -37,6 +37,13 @@ def _settings(**overrides: Any) -> Settings:
         jira_webhook_secret=None,
         github_webhook_secret=None,
         webhook_require_signatures=False,
+        checkpoint_backend="memory",
+        checkpoint_path=__import__("pathlib").Path("trace_store/checkpoints.sqlite"),
+        approval_queue_path=__import__("pathlib").Path("trace_store/pending_approvals.json"),
+        approval_api_token=None,
+        remediation_mode="simulated",
+        tickets_webhook_secret=None,
+        logs_webhook_secret=None,
     )
     base.update(overrides)
     return Settings(**base)

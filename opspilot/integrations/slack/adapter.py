@@ -18,6 +18,9 @@ import structlog
 
 from opspilot.config import Settings, get_settings
 from opspilot.graph import resume_incident, run_incident
+from opspilot.approval_queue import update_metadata as update_approval_metadata
+from opspilot.approval_queue import get_by_event_id as get_durable_pending
+from opspilot.approval_queue import remove_by_thread as remove_durable_pending
 from opspilot.integrations.slack.models import SlackIncidentContext
 from opspilot.integrations.slack.parsing import (
     extract_channel_tags,
@@ -346,6 +349,14 @@ class SlackAdapter:
                 "status_ts": status_ts,
                 "user_id": ctx.user_id,
             }
+            if thread_id:
+                update_approval_metadata(
+                    str(thread_id),
+                    channel_id=ctx.channel_id,
+                    thread_ts=ctx.thread_ts or ctx.message_ts,
+                    status_ts=status_ts,
+                    user_id=ctx.user_id,
+                )
             await self.post_approval_prompt(ctx, state, status_ts=status_ts)
             return
 
@@ -532,9 +543,19 @@ class SlackAdapter:
     ) -> dict[str, Any]:
         pending = _PENDING_APPROVALS.get(event_id)
         if not pending:
-            return {"status": "error", "reason": "unknown_or_expired_event"}
+            durable = get_durable_pending(event_id)
+            if durable is None:
+                return {"status": "error", "reason": "unknown_or_expired_event"}
+            graph_thread_id = durable.thread_id
+            channel_id = durable.channel_id
+            thread_ts = durable.thread_ts
+            status_ts = durable.status_ts
+        else:
+            graph_thread_id = pending["graph_thread_id"]
+            channel_id = pending["channel_id"]
+            thread_ts = pending["thread_ts"]
+            status_ts = pending.get("status_ts")
 
-        graph_thread_id = pending["graph_thread_id"]
         state = await asyncio.to_thread(
             resume_incident,
             graph_thread_id,
@@ -547,13 +568,15 @@ class SlackAdapter:
             persist=True,
         )
         _PENDING_APPROVALS.pop(event_id, None)
+        remove_durable_pending(str(graph_thread_id))
         summary = self._format_final_summary(state)
-        await self.post_status(
-            pending["channel_id"],
-            pending["thread_ts"],
-            f"Reviewer <@{reviewer_id}> chose *{decision.value}*.\n{summary}",
-            update_ts=pending.get("status_ts"),
-        )
+        if channel_id and thread_ts:
+            await self.post_status(
+                channel_id,
+                thread_ts,
+                f"Reviewer <@{reviewer_id}> chose *{decision.value}*.\n{summary}",
+                update_ts=status_ts,
+            )
         return {"status": "ok", "event_id": event_id, "decision": decision.value}
 
     async def handle_context_submission(

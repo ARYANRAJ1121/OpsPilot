@@ -66,6 +66,11 @@ Check: http://127.0.0.1:8000/healthz → `{"status":"ok", ...}`
 | `POST /slack/interactions` | Approve / Reject / Add context |
 | `POST /jira/webhook` | Jira issue / comment webhooks |
 | `POST /github/webhook` | GitHub Issues / issue_comment |
+| `POST /tickets/webhook` | Support-ticket ingest |
+| `POST /logs/webhook` | Logs / Alertmanager-style alerts |
+| `GET /approvals` | Web HITL approval UI |
+| `GET /api/approvals` | Pending approvals JSON |
+| `POST /api/approvals/{thread_id}/decide` | Approve / reject via API |
 | `GET /healthz` | Liveness + integration flags |
 
 (Slack-only still works: `uvicorn opspilot.integrations.slack.webhook:app`)

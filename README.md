@@ -104,14 +104,20 @@ opspilot/
 ├── eval_harness.py             # Offline scenario evaluation suite
 ├── cli.py                      # `opspilot run` / `opspilot eval`
 ├── graph.py                    # LangGraph pipeline + human-in-the-loop
-├── server.py                   # Unified Slack + Jira + GitHub FastAPI app
+├── server.py                   # Unified ingest + HITL web UI
+├── checkpoint.py               # SQLite / memory LangGraph checkpointer
+├── approval_queue.py           # Durable pending-approval JSON queue
+├── approvals_ui.py             # /approvals web UI + /api/approvals
 ├── integrations/
 │   ├── slack/                  # Bolt + FastAPI Slack adapter
 │   ├── jira/                   # Jira issue/comment webhook adapter
 │   ├── github/                 # GitHub Issues webhook adapter
+│   ├── tickets/                # Support-ticket webhook adapter
+│   ├── logs/                   # Logs / Alertmanager webhook adapter
 │   └── signing.py              # Webhook HMAC / shared-secret checks
 ├── tools/
-│   └── simulated.py            # Simulated tool registry
+│   ├── simulated.py            # Simulated tool registry ($0)
+│   └── executor.py             # Remediation modes + override hooks
 └── agents/
     ├── ingestion.py
     ├── router.py
@@ -152,12 +158,15 @@ tests/
 | CLI | ✅ `opspilot run` / `opspilot eval` |
 | Slack adapter (Bolt + FastAPI) | ✅ Events, enrichment, HITL buttons |
 | Jira / GitHub webhook adapters | ✅ Issue/comment ingest + signature checks |
+| Support tickets / logs adapters | ✅ Generic ticket + Alertmanager-style ingest |
 | Unified ingest server | ✅ `opspilot.server:app` (one tunnel) |
+| Durable HITL | ✅ SQLite checkpointer + JSON approval queue |
+| Web approval UI | ✅ `/approvals` + `/api/approvals` |
 | Groq enrichment + guardrails | ✅ Free-tier compatible |
 | LLM tool / action planning | ✅ Groq planner with heuristic fallback |
+| Remediation executor | ✅ Simulated / dry-run ($0); overrides for real cloud |
 | Free go-live guide | ✅ `docs/FREE_SLACK_GROQ.md` |
-| Real cloud remediations | ⬜ Pending (simulated by design for $0) |
-| Durable store / web HITL UI | ⬜ Pending (`MemorySaver` + JSONL today) |
+| Real cloud remediations | ✅ Out of scope for $0 — use `register_tool_override` |
 
 ---
 
@@ -196,7 +205,8 @@ uvicorn opspilot.server:app --host 0.0.0.0 --port 8000
 ```
 
 Point Slack at `/slack/events` and `/slack/interactions`, Jira at `/jira/webhook`,
-GitHub at `/github/webhook` on the same tunnel URL.
+GitHub at `/github/webhook`, tickets at `/tickets/webhook`, logs at `/logs/webhook`.
+Open **http://127.0.0.1:8000/approvals** for the web HITL queue.
 
 **Free setup guide:** [docs/FREE_SLACK_GROQ.md](./docs/FREE_SLACK_GROQ.md)
 

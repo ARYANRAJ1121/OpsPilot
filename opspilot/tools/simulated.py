@@ -320,23 +320,8 @@ SIMULATED_TOOLS: dict[str, Any] = {
 
 def execute_tool(tool_name: str, parameters: dict[str, Any]) -> ToolOutput:
     """
-    Execute a simulated tool and return a ToolOutput.
-
-    Raises:
-        KeyError: if tool_name is not in SIMULATED_TOOLS.
+    Backward-compatible entrypoint — delegates to ``tools.executor``.
     """
-    if tool_name not in SIMULATED_TOOLS:
-        raise KeyError(
-            f"Unknown tool '{tool_name}'. "
-            f"Available: {sorted(SIMULATED_TOOLS)}"
-        )
+    from opspilot.tools.executor import execute_tool as _execute
 
-    log.info("tool.execute", tool_name=tool_name, parameters=parameters)
-    result = SIMULATED_TOOLS[tool_name](parameters)
-    log.info("tool.result", tool_name=tool_name, result=result)
-
-    return ToolOutput(
-        tool_name=tool_name,
-        parameters=parameters,
-        result=result,
-    )
+    return _execute(tool_name, parameters)
