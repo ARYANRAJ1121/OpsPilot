@@ -12,6 +12,7 @@ def _ephemeral_persistence(monkeypatch: pytest.MonkeyPatch, tmp_path):
         "OPSPILOT_APPROVAL_QUEUE_PATH", str(tmp_path / "pending_approvals.json")
     )
     monkeypatch.setenv("OPSPILOT_REMEDIATION_MODE", "simulated")
+    monkeypatch.setenv("OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES", "false")
 
     from opspilot.approval_queue import clear_queue
     from opspilot.config import reset_settings_cache

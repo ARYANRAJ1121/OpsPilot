@@ -71,6 +71,10 @@ def main(argv: list[str] | None = None) -> int:
         "smoke-slack",
         help="Local SlackAdapter smoke test (no Slack network)",
     )
+    sub.add_parser(
+        "smoke-webhooks",
+        help="Offline Jira/GitHub/tickets/logs adapter smoke (mocked graph)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -82,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_doctor()
     if args.command == "smoke-slack":
         return _cmd_smoke_slack()
+    if args.command == "smoke-webhooks":
+        return _cmd_smoke_webhooks()
     parser.error(f"unknown command: {args.command}")
     return 2
 
@@ -120,10 +126,12 @@ def _cmd_eval(args: argparse.Namespace) -> int:
 
 
 def _cmd_doctor() -> int:
+    from opspilot import __version__
     from opspilot.config import get_settings
 
     s = get_settings()
-    print("OpsPilot doctor (free Slack + Groq + webhooks)")
+    problems: list[str] = []
+    print(f"OpsPilot doctor v{__version__} (free Slack + Groq + webhooks)")
     print(f"  groq_key_set:        {bool(s.groq_api_key)}")
     print(f"  llm_enabled:         {s.llm_enabled}")
     print(f"  llm_active:          {s.llm_active}")
@@ -141,6 +149,7 @@ def _cmd_doctor() -> int:
     print(f"  tickets_secret_set:  {bool(s.tickets_webhook_secret)}")
     print(f"  logs_secret_set:     {bool(s.logs_webhook_secret)}")
     print(f"  require_signatures:  {s.webhook_require_signatures}")
+    print(f"  approval_token_set:  {bool(s.approval_api_token)}")
     print(f"  checkpoint_backend:  {s.checkpoint_backend}")
     print(f"  checkpoint_path:     {s.checkpoint_path}")
     print(f"  approval_queue:      {s.approval_queue_path}")
@@ -153,19 +162,47 @@ def _cmd_doctor() -> int:
         print("  tip: set SLACK_BOT_TOKEN + SLACK_SIGNING_SECRET for live Slack")
     else:
         print("  Slack env looks ready")
-    if s.webhook_require_signatures and not (
-        s.jira_webhook_secret and s.github_webhook_secret
-    ):
-        print("  tip: set JIRA_WEBHOOK_SECRET / GITHUB_WEBHOOK_SECRET")
-        print("       or set OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES=false for local dev")
+    if not s.webhook_require_signatures:
+        print("  warn: OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES=false")
+        print("        OK for local-only; enable before public tunnels")
+    if s.webhook_require_signatures:
+        missing = [
+            name
+            for name, val in (
+                ("JIRA_WEBHOOK_SECRET", s.jira_webhook_secret),
+                ("GITHUB_WEBHOOK_SECRET", s.github_webhook_secret),
+                ("TICKETS_WEBHOOK_SECRET", s.tickets_webhook_secret),
+                ("LOGS_WEBHOOK_SECRET", s.logs_webhook_secret),
+            )
+            if not val
+        ]
+        if missing:
+            print(f"  tip: missing webhook secrets while require_signatures=true: {', '.join(missing)}")
+            print("       set secrets, or set OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES=false for local unsigned smoke")
+            # Not a hard failure — unused integrations may omit secrets.
+    if not s.approval_api_token:
+        print("  warn: OPSPILOT_APPROVAL_API_TOKEN unset — /approvals is open")
+        print("        set a token before exposing the server on a public URL")
+    if s.remediation_mode not in {"simulated", "dry_run"}:
+        problems.append(f"unknown remediation_mode={s.remediation_mode!r}")
+    if s.checkpoint_backend not in {"sqlite", "memory"}:
+        problems.append(f"unknown checkpoint_backend={s.checkpoint_backend!r}")
     print("  unified server: uvicorn opspilot.server:app --host 0.0.0.0 --port 8000")
     print("  approvals UI:   http://127.0.0.1:8000/approvals")
     print("  guide: docs/FREE_SLACK_GROQ.md")
-    return 0
+    for p in problems:
+        print(f"  error: {p}")
+    return 1 if problems else 0
 
 
 def _cmd_smoke_slack() -> int:
     from opspilot.integrations.slack.smoke import main as smoke_main
+
+    return smoke_main()
+
+
+def _cmd_smoke_webhooks() -> int:
+    from opspilot.smoke_webhooks import main as smoke_main
 
     return smoke_main()
 

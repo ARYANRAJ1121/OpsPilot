@@ -151,7 +151,7 @@ def create_app(*, adapter: SlackAdapter | None = None) -> FastAPI:
     if adapter is not None:
         _adapter = adapter
 
-    api = FastAPI(title="OpsPilot Slack Webhook", version="0.1.0", lifespan=lifespan)
+    api = FastAPI(title="OpsPilot Slack Webhook", version="1.0.1", lifespan=lifespan)
 
     @api.get("/healthz")
     async def healthz() -> dict[str, str]:

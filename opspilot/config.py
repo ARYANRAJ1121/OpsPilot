@@ -81,6 +81,14 @@ class Settings:
     def github_configured(self) -> bool:
         return bool(self.github_webhook_secret) or not self.webhook_require_signatures
 
+    @property
+    def tickets_configured(self) -> bool:
+        return bool(self.tickets_webhook_secret) or not self.webhook_require_signatures
+
+    @property
+    def logs_configured(self) -> bool:
+        return bool(self.logs_webhook_secret) or not self.webhook_require_signatures
+
 
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
@@ -144,7 +152,9 @@ def get_settings() -> Settings:
         jira_webhook_secret=os.getenv("JIRA_WEBHOOK_SECRET") or None,
         github_webhook_secret=os.getenv("GITHUB_WEBHOOK_SECRET") or None,
         webhook_require_signatures=_env_bool(
-            "OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES", False
+            # Prefer signed webhooks. Set false explicitly for local unsigned smoke.
+            "OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES",
+            True,
         ),
         checkpoint_backend=os.getenv("OPSPILOT_CHECKPOINT_BACKEND", "sqlite")
         .strip()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from opspilot.approval_queue import get_by_thread, list_pending
@@ -79,8 +79,25 @@ async def api_decide(
 
 
 @router.get("/approvals", response_class=HTMLResponse)
-async def approvals_page() -> str:
+async def approvals_page(
+    token: str | None = Query(default=None),
+    authorization: str | None = Header(default=None),
+    x_opspilot_token: str | None = Header(default=None),
+) -> str:
     """Minimal operator UI for pending HITL approvals."""
+    expected = get_settings().approval_api_token
+    if expected:
+        # Allow ?token=… for browser bookmarks; still enforce when configured.
+        provided = token or x_opspilot_token
+        if authorization and authorization.lower().startswith("bearer "):
+            provided = authorization[7:].strip()
+        if provided != expected:
+            raise HTTPException(
+                status_code=401,
+                detail="approvals UI requires OPSPILOT_APPROVAL_API_TOKEN "
+                "(pass ?token=… or X-OpsPilot-Token)",
+            )
+
     items = list_pending()
     rows = []
     for e in items:
@@ -101,9 +118,10 @@ async def approvals_page() -> str:
         )
     body = "\n".join(rows) if rows else "<p class='empty'>No pending approvals.</p>"
     token_hint = (
-        "Set header <code>X-OpsPilot-Token</code> if OPSPILOT_APPROVAL_API_TOKEN is configured."
-        if get_settings().approval_api_token
-        else "No approval API token configured (local/dev)."
+        "Token required — store with "
+        "<code>localStorage.setItem('opspilot_token','…')</code> or use ?token=."
+        if expected
+        else "No approval API token configured (local/dev only — set one before public tunnels)."
     )
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -138,6 +156,11 @@ async def approvals_page() -> str:
     {body}
   </main>
   <script>
+    (function() {{
+      const params = new URLSearchParams(location.search);
+      const q = params.get('token');
+      if (q) localStorage.setItem('opspilot_token', q);
+    }})();
     async function decide(threadId, decision) {{
       const token = localStorage.getItem('opspilot_token') || '';
       const headers = {{'Content-Type':'application/json'}};

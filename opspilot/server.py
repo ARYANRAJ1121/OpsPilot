@@ -29,6 +29,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 
+from opspilot import __version__
 from opspilot.approvals_ui import router as approvals_router
 from opspilot.config import get_settings
 from opspilot.integrations.github.adapter import handle_github_webhook
@@ -64,7 +65,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     api = FastAPI(
         title="OpsPilot Ingest Server",
-        version="1.0.0",
+        version=__version__,
         description="Unified Slack + Jira + GitHub + tickets + logs + HITL UI",
         lifespan=lifespan,
     )
@@ -75,18 +76,18 @@ def create_app() -> FastAPI:
         s = get_settings()
         return {
             "status": "ok",
-            "version": "1.0.0",
+            "version": __version__,
             "integrations": {
                 "slack": s.slack_configured,
-                "jira": bool(s.jira_webhook_secret) or not s.webhook_require_signatures,
-                "github": bool(s.github_webhook_secret) or not s.webhook_require_signatures,
-                "tickets": bool(s.tickets_webhook_secret)
-                or not s.webhook_require_signatures,
-                "logs": bool(s.logs_webhook_secret) or not s.webhook_require_signatures,
+                "jira": s.jira_configured,
+                "github": s.github_configured,
+                "tickets": s.tickets_configured,
+                "logs": s.logs_configured,
                 "groq": s.llm_active,
                 "llm_planning": s.llm_planning_active,
                 "checkpoint": s.checkpoint_backend,
                 "remediation_mode": s.remediation_mode,
+                "approval_token_required": bool(s.approval_api_token),
             },
         }
 
