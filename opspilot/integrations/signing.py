@@ -1,18 +1,16 @@
 """
-Shared webhook signature verification for GitHub and Jira.
+Shared webhook signature verification for GitHub, Jira, and Slack.
 
 GitHub: X-Hub-Signature-256 = sha256=<hmac_hex>
 Jira:   X-Hub-Signature (sha256=...) OR X-OpsPilot-Webhook-Secret header
-        matching JIRA_WEBHOOK_SECRET (simple shared-secret mode for free setups).
-
-When the corresponding secret is unset, verification is skipped (dev/local).
-When OPSPILOT_WEBHOOK_REQUIRE_SIGNATURES=true, missing secrets cause 401.
+Slack:  X-Slack-Signature = v0=<hmac_hex> over "v0:{timestamp}:{body}"
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import time
 
 
 def _hmac_sha256_hex(secret: str, body: bytes) -> str:
@@ -58,3 +56,30 @@ def verify_jira_signature(
         expected = "sha256=" + _hmac_sha256_hex(secret, body)
         return hmac.compare_digest(expected, signature_header.strip())
     return False
+
+
+def verify_slack_signature(
+    body: bytes,
+    *,
+    timestamp: str | None,
+    signature_header: str | None,
+    signing_secret: str | None,
+    max_age_seconds: int = 60 * 5,
+) -> bool:
+    """Verify Slack's X-Slack-Signature (v0=...)."""
+    if not signing_secret or not timestamp or not signature_header:
+        return False
+    try:
+        ts = int(timestamp)
+    except ValueError:
+        return False
+    if abs(int(time.time()) - ts) > max_age_seconds:
+        return False
+    base = f"v0:{timestamp}:{body.decode('utf-8')}"
+    digest = hmac.new(
+        signing_secret.encode("utf-8"),
+        base.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    expected = f"v0={digest}"
+    return hmac.compare_digest(expected, signature_header.strip())

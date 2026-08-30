@@ -18,6 +18,7 @@ from slack_bolt.async_app import AsyncApp
 
 from opspilot.config import get_settings
 from opspilot.integrations.slack.adapter import SlackAdapter
+from opspilot.integrations.slack.events import handle_slack_request
 from opspilot.integrations.slack.rate_limit import RateLimitError
 from opspilot.schemas import HumanApprovalDecision
 
@@ -159,14 +160,13 @@ def create_app(*, adapter: SlackAdapter | None = None) -> FastAPI:
 
     @api.post("/slack/events")
     async def slack_events(req: Request) -> Response:
-        # Bolt verifies signing secret and ACKs within the 3s window.
         assert _handler is not None
-        return await _handler.handle(req)
+        return await handle_slack_request(req, _handler)
 
     @api.post("/slack/interactions")
     async def slack_interactions(req: Request) -> Response:
         assert _handler is not None
-        return await _handler.handle(req)
+        return await handle_slack_request(req, _handler)
 
     return api
 

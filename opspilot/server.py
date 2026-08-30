@@ -36,6 +36,7 @@ from opspilot.integrations.github.adapter import handle_github_webhook
 from opspilot.integrations.jira.adapter import handle_jira_webhook
 from opspilot.integrations.logs.adapter import handle_logs_webhook
 from opspilot.integrations.signing import verify_github_signature, verify_jira_signature
+from opspilot.integrations.slack.events import handle_slack_request
 from opspilot.integrations.slack.webhook import build_bolt_app, get_adapter
 from opspilot.integrations.tickets.adapter import handle_ticket_webhook
 
@@ -94,12 +95,12 @@ def create_app() -> FastAPI:
     @api.post("/slack/events")
     async def slack_events(req: Request) -> Response:
         assert _handler is not None
-        return await _handler.handle(req)
+        return await handle_slack_request(req, _handler)
 
     @api.post("/slack/interactions")
     async def slack_interactions(req: Request) -> Response:
         assert _handler is not None
-        return await _handler.handle(req)
+        return await handle_slack_request(req, _handler)
 
     @api.post("/jira/webhook")
     async def jira_webhook(req: Request) -> JSONResponse:
