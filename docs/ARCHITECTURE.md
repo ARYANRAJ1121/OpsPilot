@@ -4,30 +4,30 @@ OpsPilot is a LangGraph multi-agent incident-response pipeline with deterministi
 
 ```mermaid
 flowchart TD
-  sources[Slack_Jira_GitHub_Tickets_Logs] --> server[UnifiedFastAPIServer]
-  server --> graph[LangGraphPipeline]
-  graph --> ingest[Ingestion]
-  ingest --> router[Router]
-  router --> invest[Investigation]
-  router --> knowledge[Knowledge]
-  router --> customer[CustomerComm]
-  invest --> diagnosis[EvidenceDiagnosis]
+  sources["Slack / Jira / GitHub / Tickets / Logs"] --> ingestServer["Unified FastAPI"]
+  ingestServer --> lgPipeline["LangGraph pipeline"]
+  lgPipeline --> ingest["Ingestion"]
+  ingest --> severityRouter["Router"]
+  severityRouter --> invest["Investigation"]
+  severityRouter --> knowledge["Knowledge"]
+  severityRouter --> customer["Customer Comm"]
+  invest --> diagnosis["Evidence + Diagnosis"]
   knowledge --> diagnosis
-  diagnosis --> planner[ActionPlanner]
-  planner --> provenance[ProvenanceGate]
-  provenance --> policy[PolicyEngine]
-  policy --> confidence[ConfidenceRouter]
-  confidence -->|auto| exec[Execution]
-  confidence -->|HITL| interrupt[Interrupt]
-  interrupt --> queue[ApprovalQueue_JSON]
-  interrupt --> ckpt[SqliteCheckpointer]
-  queue --> webUI[ApprovalsWebUI]
-  queue --> slackBtn[SlackButtons]
-  webUI --> resume[Resume]
-  slackBtn --> resume
-  resume --> exec
-  exec --> tools[SimulatedOrDryRunTools]
-  graph --> traces[JSONLTraceStore]
+  diagnosis --> planner["Action Planner"]
+  planner --> provenance["Provenance Gate"]
+  provenance --> policy["Policy Engine"]
+  policy --> confidence["Confidence Router"]
+  confidence -->|auto| execNode["Execution"]
+  confidence -->|HITL| interrupt["Interrupt"]
+  interrupt --> queue["Approval queue JSON"]
+  interrupt --> ckpt["SQLite checkpointer"]
+  queue --> webUI["Approvals web UI"]
+  queue --> slackBtn["Slack buttons"]
+  webUI --> resumeNode["Resume"]
+  slackBtn --> resumeNode
+  resumeNode --> execNode
+  execNode --> tools["Simulated / dry-run tools"]
+  lgPipeline --> traces["JSONL trace store"]
 ```
 
 ## Safety model
