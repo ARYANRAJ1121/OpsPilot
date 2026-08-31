@@ -35,27 +35,27 @@ Most “AI ops” demos let a model decide what to run in production. OpsPilot d
 
 ```mermaid
 flowchart TD
-  sources[Slack_Jira_GitHub_Tickets_Logs] --> server[UnifiedFastAPI]
-  server --> graph[LangGraph]
-  graph --> ingest[Ingestion]
-  ingest --> router[Router]
-  router --> invest[Investigation]
-  router --> knowledge[Knowledge]
-  router --> customer[CustomerComm]
-  invest --> diagnosis[EvidenceDiagnosis]
+  sources["Slack / Jira / GitHub / Tickets / Logs"] --> ingestServer["Unified FastAPI"]
+  ingestServer --> lgPipeline["LangGraph pipeline"]
+  lgPipeline --> ingest["Ingestion"]
+  ingest --> severityRouter["Router"]
+  severityRouter --> invest["Investigation"]
+  severityRouter --> knowledge["Knowledge"]
+  severityRouter --> customer["Customer Comm"]
+  invest --> diagnosis["Evidence + Diagnosis"]
   knowledge --> diagnosis
-  diagnosis --> planner[ActionPlanner]
-  planner --> provenance[ProvenanceGate]
-  provenance --> policy[PolicyEngine]
-  policy --> confidence[ConfidenceRouter]
-  confidence -->|safe_high_conf| exec[Execution]
-  confidence -->|risky| hitl[HumanApproval]
-  hitl -->|approved| exec
-  hitl -->|rejected| escalate[Escalate]
-  exec --> tools[SimulatedOrDryRunTools]
-  graph --> traces[JSONLTraces]
-  hitl --> queue[DurableApprovalQueue]
-  queue --> slackUI[SlackButtons]
+  diagnosis --> planner["Action Planner"]
+  planner --> provenance["Provenance Gate"]
+  provenance --> policy["Policy Engine"]
+  policy --> confidence["Confidence Router"]
+  confidence -->|"safe + high conf"| execNode["Execution"]
+  confidence -->|risky| hitl["Human Approval"]
+  hitl -->|approved| execNode
+  hitl -->|rejected| escalate["Escalate"]
+  execNode --> tools["Simulated / dry-run tools"]
+  lgPipeline --> traces["JSONL traces"]
+  hitl --> queue["Durable approval queue"]
+  queue --> slackUI["Slack buttons"]
   queue --> webUI["/approvals"]
 ```
 
