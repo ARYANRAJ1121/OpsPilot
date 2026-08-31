@@ -58,6 +58,8 @@ class Settings:
     remediation_mode: str
     tickets_webhook_secret: str | None
     logs_webhook_secret: str | None
+    # Local tunnel only — skips Bolt request signature checks
+    slack_skip_request_verification: bool = False
 
     @property
     def llm_active(self) -> bool:
@@ -174,6 +176,9 @@ def get_settings() -> Settings:
         .lower(),
         tickets_webhook_secret=os.getenv("TICKETS_WEBHOOK_SECRET") or None,
         logs_webhook_secret=os.getenv("LOGS_WEBHOOK_SECRET") or None,
+        slack_skip_request_verification=_env_bool(
+            "OPSPILOT_SLACK_SKIP_REQUEST_VERIFICATION", False
+        ),
     )
 
 

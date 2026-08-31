@@ -50,7 +50,13 @@ def build_bolt_app(*, adapter: SlackAdapter | None = None) -> AsyncApp:
         token=settings.slack_bot_token or "xoxb-test",
         signing_secret=settings.slack_signing_secret or "test-signing-secret",
         process_before_response=False,  # ACK first, then process
+        request_verification_enabled=not settings.slack_skip_request_verification,
     )
+    if settings.slack_skip_request_verification:
+        log.warning(
+            "slack.request_verification_disabled",
+            hint="Set OPSPILOT_SLACK_SKIP_REQUEST_VERIFICATION=false after fixing SLACK_SIGNING_SECRET",
+        )
 
     async def _ack_and_schedule(event: dict[str, Any], body: dict[str, Any]) -> None:
         """Schedule background work; Bolt ACK is handled by the framework."""
